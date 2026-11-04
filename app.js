@@ -1,8 +1,8 @@
 /* ===== 설정: 수파베이스 프로젝트 값 넣기 =====
    Supabase 대시보드 → Project Settings → API 에서 복사
    (비워 두면 이 브라우저에만 저장돼요) */
-const SUPABASE_URL = '';
-const SUPABASE_ANON_KEY = '';
+const SUPABASE_URL = 'https://pbzwcsaveufsqbmhygon.supabase.co/';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiendjc2F2ZXVmc3FibWh5Z29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxOTQ2MTgsImV4cCI6MjA5MDc3MDYxOH0.sq8gWEF7ntiA3pL9DeDQ59rVNuDzXBkJSDJmC2OHIOE';
 const TABLE = 'tb_docs';
 
 const $ = s => document.querySelector(s);
