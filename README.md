@@ -7,6 +7,7 @@
 | 파일 | 하는 일 |
 |---|---|
 | `index.html`, `style.css`, `app.js` | 페이지 본체 |
+| `config.js` | 수파베이스 주소와 키 |
 | `api/translate.js` | 상품명 번역용 버셀 서버 함수 (DeepL) |
 | `supabase.sql` | 수파베이스 테이블 만드는 SQL |
 
@@ -16,11 +17,14 @@
 1. 수파베이스 대시보드에서 쓸 프로젝트를 연다. 기존 프로젝트를 써도 된다. 테이블 이름은 `tb_docs`라서 다른 페이지와 겹치지 않는다.
 2. **SQL Editor**에 `supabase.sql` 내용을 통째로 붙여넣고 **Run**을 누른다.
 3. **Project Settings → API**에서 `Project URL`과 `anon public` 키를 복사한다.
-4. `app.js` 맨 위 두 줄에 붙여넣는다.
+4. `config.js`에 붙여넣는다.
    ```js
-   const SUPABASE_URL = 'https://xxxx.supabase.co';
-   const SUPABASE_ANON_KEY = 'eyJ...';
+   window.TB_CONFIG = {
+     SUPABASE_URL: 'https://xxxx.supabase.co',
+     SUPABASE_ANON_KEY: 'eyJ...'
+   };
    ```
+   앞으로 업데이트할 때는 `config.js`를 빼고 나머지 파일만 덮어쓰면 된다.
 
 ### 2. DeepL 무료 키 받기
 1. DeepL 사이트에서 **DeepL API Free**에 가입한다. 일반 DeepL Pro 구독이 아니라 개발자용 API Free다.
@@ -38,7 +42,8 @@
 - 번역은 날짜 화면의 **한국어로 번역** 버튼으로 한다. 한 번 번역한 상품은 저장돼서 다시 번역하지 않는다.
 - 번역 결과가 마음에 안 들면 상품명 옆 **수정**을 눌러 직접 고친다.
 - 번역 전에 包邮, 新款, 【…】 같은 광고 문구는 자동으로 걷어낸다. 걸러낼 단어를 더 넣고 싶으면 `app.js`의 `cleanTitle`을 고친다.
-- Claude 아티팩트 버전에서 쓰던 데이터가 있으면, 거기서 **백업 내보내기**를 하고 여기서 **백업 불러오기**로 가져온다.
+- 품목마다 구매자 선택 버튼이 있다. 지정하지 않은 품목은 **기본** 구매자로 계산되니, 다른 사람 몫만 바꾸면 된다.
+- 사람 추가, 이름 수정, 삭제, 기본 변경은 사람별 지출의 **사람 관리**에서 한다. 사람을 지우면 그 사람 몫이던 품목은 기본 구매자로 돌아간다.
 
 ## 알아둘 점
 - 로그인 없이 anon 키로 읽고 쓰는 구조다. 링크와 키를 아는 사람은 데이터를 볼 수 있으니, 링크를 공유하지 않는다. 검색엔진에는 안 뜨도록 `noindex`를 넣어 뒀다.
