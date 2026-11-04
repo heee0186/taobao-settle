@@ -51,7 +51,7 @@ async function flush() {
   busy = false;
 }
 const CLIENT = CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase
-  ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+  ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, { db: { schema: 'money' } }) : null;
 async function initCloud() {
   if (!CLIENT) { setCloud('off'); return; }
   const sb = CLIENT;

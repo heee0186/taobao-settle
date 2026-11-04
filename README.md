@@ -14,7 +14,7 @@
 ## 설정 순서
 
 ### 1. 수파베이스
-`tb_docs` 테이블은 개인용(돈 관련) 수파베이스 프로젝트에 있고, 가계부 저장소의 `supabase/migration/1-new-project-setup.sql`로 만들어요.
+`tb_docs` 테이블은 프로젝트 2(예절퀘스트와 같은 곳)의 `money` 스키마에 있고, 가계부 저장소의 `supabase/migration/1-setup-money-schema.sql`로 만들어요.
 `config.js`에는 그 프로젝트의 `Project URL`과 **Publishable key**(`sb_publishable_…`)를 넣어요.
 
 ### 2. DeepL 무료 키 받기

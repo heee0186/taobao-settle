@@ -1,4 +1,4 @@
--- 타오바오 정산 테이블(tb_docs)은 이제 개인용(돈 관련) Supabase 프로젝트에 있어요.
+-- 타오바오 정산 테이블(tb_docs)은 이제 프로젝트 2(예절퀘스트와 같은 곳)의 money 스키마에 있어요.
 -- 테이블과 권한은 가계부 저장소의
---   supabase/migration/1-new-project-setup.sql
+--   supabase/migration/1-setup-money-schema.sql
 -- 한 파일로 함께 만들어요. (주인 계정으로 로그인해야 읽고 쓸 수 있음)
