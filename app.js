@@ -349,7 +349,7 @@ function render() {
   if (pend) h += '<div class="card"><h3>여러 날짜가 섞여 있어요</h3><p class="sub">포함할 날짜를 고르세요. 가장 많은 날짜만 골라 두었어요.</p>' +
     pend.ds.map(d => '<label class="ck"><input type="checkbox" data-a="pd" data-d="' + d + '"' + (pend.on[d] ? ' checked' : '') + '> ' + d + ' <span class="mut">' + pend.c[d] + '건</span></label>').join('') +
     '<div class="hd" style="justify-content:flex-end;margin-top:10px"><button class="txt" data-a="pno">취소</button><button class="btn" data-a="pok">선택한 날짜 추가</button></div></div>';
-  h += sel ? detail(sel) : (pend ? '' : '<p class="empty">왼쪽에 주문 페이지를 붙여넣어 시작하세요.</p>');
+  h += sel ? detail(sel) : (pend ? '' : '<p class="empty">주문 페이지를 붙여넣고 분석해서 추가를 누르면 시작돼요.</p>');
   $('#dt').innerHTML = h;
   const f = $('#ek') || $('#pe'); if (f) { f.focus(); f.select(); }
 }
