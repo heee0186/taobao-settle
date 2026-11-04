@@ -101,3 +101,16 @@ input.wide{width:100%}
 .hint{margin-top:8px}
 .empty{color:var(--mut);padding:40px 0;text-align:center}
 label.ck{display:flex;align-items:center;gap:8px;padding:4px 0}
+
+/* 로그인 */
+.gate{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg)}
+.gate[hidden]{display:none}
+.gc{width:100%;max-width:340px;background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:24px}
+.gc h2{margin:0 0 6px;font-size:18px}
+.gc p{margin:0 0 18px;color:var(--mut);font-size:13px;line-height:1.55}
+.gc label{display:block;font-size:12px;font-weight:600;color:var(--sub);margin:0 0 5px}
+.gc input{width:100%;padding:10px 12px;margin:0 0 12px;border:1px solid var(--ln);border-radius:10px;background:var(--card);color:var(--tx);font-size:14px}
+.gc .go{margin-top:4px}
+.gc .go:disabled{opacity:.6}
+.ge{min-height:1.2em;margin-top:10px;color:var(--er);font-size:13px;text-align:center}
+.lo{border:0;background:none;color:var(--mut);font-size:12px;padding:0;text-decoration:underline;cursor:pointer}

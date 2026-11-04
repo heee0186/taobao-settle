@@ -50,9 +50,11 @@ async function flush() {
   }
   busy = false;
 }
+const CLIENT = CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase
+  ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, { db: { schema: 'money' } }) : null;
 async function initCloud() {
-  if (!CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY || !window.supabase) { setCloud('off'); return; }
-  const sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+  if (!CLIENT) { setCloud('off'); return; }
+  const sb = CLIENT;
   const docs = [];
   try {
     for (let from = 0; ; from += 1000) {
@@ -413,5 +415,50 @@ document.addEventListener('keydown', e => {
   else if (id === 'pe' && e.key === 'Enter') { $('[data-a="pesave"]').click(); }
   else if (id === 'pe' && e.key === 'Escape') { pe = null; render(); }
 });
+/* ---------- 로그인 (주인만 수파베이스 자료를 읽고 씀) ---------- */
+let started = false;
+async function isOwner() {
+  const { data, error } = await CLIENT.rpc('is_owner');
+  if (error) throw error;
+  return data === true;
+}
+function showGate(m) {
+  $('#gate').hidden = false; $('#lo').hidden = true;
+  $('#gm').textContent = m || '';
+  const b = $('#gb'); b.disabled = false; b.textContent = '로그인';
+  setTimeout(() => $('#ge').focus(), 50);
+}
+function enter() {
+  $('#gate').hidden = true; $('#lo').hidden = false;
+  if (!started) { started = true; initCloud(); }
+}
+async function initAuth() {
+  if (!CLIENT) { setCloud('off'); return; }
+  try {
+    const { data } = await CLIENT.auth.getSession();
+    if (data.session && await isOwner()) return enter();
+    if (data.session) await CLIENT.auth.signOut();
+    showGate();
+  } catch (e) { console.error(e); showGate('서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.'); }
+}
+$('#gf').addEventListener('submit', async e => {
+  e.preventDefault();
+  const b = $('#gb'); b.disabled = true; b.textContent = '확인 중…'; $('#gm').textContent = '';
+  try {
+    const { error } = await CLIENT.auth.signInWithPassword({ email: $('#ge').value.trim(), password: $('#gp').value });
+    if (error) return showGate('이메일 또는 비밀번호가 맞지 않아요.');
+    if (!(await isOwner())) { await CLIENT.auth.signOut(); return showGate('이 계정은 볼 권한이 없어요.'); }
+    $('#gp').value = ''; enter();
+  } catch (x) { console.error(x); showGate('로그인 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'); }
+});
+$('#lo').addEventListener('click', async () => {
+  if (!confirm('로그아웃할까요?')) return;
+  if (dirty.size || gone.size) { clearTimeout(tmr); await flush(); }
+  await CLIENT.auth.signOut();
+});
+if (CLIENT) CLIENT.auth.onAuthStateChange(ev => {
+  if (ev === 'SIGNED_OUT') { SB = null; started = false; showGate(); }
+});
+
 render();
-initCloud();
+initAuth();

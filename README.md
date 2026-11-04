@@ -13,18 +13,9 @@
 
 ## 설정 순서
 
-### 1. 수파베이스 테이블 만들기
-1. 수파베이스 대시보드에서 쓸 프로젝트를 연다. 기존 프로젝트를 써도 된다. 테이블 이름은 `tb_docs`라서 다른 페이지와 겹치지 않는다.
-2. **SQL Editor**에 `supabase.sql` 내용을 통째로 붙여넣고 **Run**을 누른다.
-3. **Project Settings → API**에서 `Project URL`과 `anon public` 키를 복사한다.
-4. `config.js`에 붙여넣는다.
-   ```js
-   window.TB_CONFIG = {
-     SUPABASE_URL: 'https://xxxx.supabase.co',
-     SUPABASE_ANON_KEY: 'eyJ...'
-   };
-   ```
-   앞으로 업데이트할 때는 `config.js`를 빼고 나머지 파일만 덮어쓰면 된다.
+### 1. 수파베이스
+`tb_docs` 테이블은 프로젝트 2(예절퀘스트와 같은 곳)의 `money` 스키마에 있고, 가계부 저장소의 `supabase/migration/1-setup-money-schema.sql`로 만들어요.
+`config.js`에는 그 프로젝트의 `Project URL`과 **Publishable key**(`sb_publishable_…`)를 넣어요.
 
 ### 2. DeepL 무료 키 받기
 1. DeepL 사이트에서 **DeepL API Free**에 가입한다. 일반 DeepL Pro 구독이 아니라 개발자용 API Free다.
@@ -46,7 +37,7 @@
 - 사람 추가, 이름 수정, 삭제, 기본 변경은 사람별 지출의 **사람 관리**에서 한다. 사람을 지우면 그 사람 몫이던 품목은 기본 구매자로 돌아간다.
 
 ## 알아둘 점
-- 로그인 없이 anon 키로 읽고 쓰는 구조다. 링크와 키를 아는 사람은 데이터를 볼 수 있으니, 링크를 공유하지 않는다. 검색엔진에는 안 뜨도록 `noindex`를 넣어 뒀다.
+- 주인 계정으로 로그인해야 수파베이스 자료를 읽고 쓸 수 있다. 공개 키가 코드에 있어도 권한 정책이 막는다. 검색엔진에는 안 뜨도록 `noindex`를 넣어 뒀다.
 - DeepL 무료는 월 50만 자까지다. 다 쓰면 결제되는 게 아니라 다음 갱신일까지 번역만 막힌다.
 - 수파베이스 무료 프로젝트는 오래 안 쓰면 일시정지될 수 있다. 그때는 대시보드에서 다시 켜면 된다.
 - `app.js`를 바꾼 뒤 깃허브에 푸시하면 버셀이 알아서 다시 배포한다.

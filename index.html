@@ -10,7 +10,7 @@
 <body>
 <main>
 <aside>
-<div class="brand"><h1>타오바오 정산</h1><span id="sv" class="sv"></span></div>
+<div class="brand"><h1>타오바오 정산</h1><span><span id="sv" class="sv"></span> <button class="lo" id="lo" type="button" hidden>로그아웃</button></span></div>
 <textarea id="t" placeholder="주문 페이지(已买到的宝贝)를 통째로 복사해 붙여넣으세요"></textarea>
 <button class="go" data-a="parse">분석해서 추가</button>
 <div id="ms" class="ms" role="status"></div>
@@ -18,6 +18,16 @@
 </aside>
 <section id="dt"></section>
 </main>
+<div id="gate" class="gate" hidden>
+<form class="gc" id="gf">
+<h2>타오바오 정산</h2>
+<p>로그인해야 저장된 주문을 불러와요.<br>한 번 로그인하면 이 기기에서는 유지돼요.</p>
+<label for="ge">이메일</label><input id="ge" type="email" autocomplete="username" required>
+<label for="gp">비밀번호</label><input id="gp" type="password" autocomplete="current-password" required>
+<button class="go" id="gb" type="submit">로그인</button>
+<div class="ge" id="gm" role="alert"></div>
+</form>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
