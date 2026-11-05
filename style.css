@@ -112,5 +112,5 @@ label.ck{display:flex;align-items:center;gap:8px;padding:4px 0}
 .gc input{width:100%;padding:10px 12px;margin:0 0 12px;border:1px solid var(--ln);border-radius:10px;background:var(--card);color:var(--tx);font-size:14px}
 .gc .go{margin-top:4px}
 .gc .go:disabled{opacity:.6}
-.ge{min-height:1.2em;margin-top:10px;color:var(--er);font-size:13px;text-align:center}
+.ge{white-space:pre-wrap;min-height:1.2em;margin-top:10px;color:var(--er);font-size:13px;text-align:center}
 .lo{border:0;background:none;color:var(--mut);font-size:12px;padding:0;text-decoration:underline;cursor:pointer}

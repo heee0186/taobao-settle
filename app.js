@@ -417,6 +417,17 @@ document.addEventListener('keydown', e => {
 });
 /* ---------- 로그인 (주인만 수파베이스 자료를 읽고 씀) ---------- */
 let started = false;
+function loginErrorText(error) {
+  const code = error && (error.code || '');
+  const msg = (error && error.message) || '';
+  if (code === 'invalid_credentials' || /Invalid login credentials/i.test(msg))
+    return '이메일 또는 비밀번호가 맞지 않아요.\n(계정은 프로젝트 2 wlrenrjgwqefumsenihc 쪽 계정이어야 해요)';
+  if (code === 'email_not_confirmed' || /not confirmed/i.test(msg))
+    return '이메일 확인이 안 된 계정이에요.\nSupabase → Authentication → Users 에서 계정을 Confirm 해 주세요.';
+  if (/api key|apikey|jwt/i.test(msg))
+    return '앱의 Supabase 키가 맞지 않아요. [' + msg + ']';
+  return '로그인하지 못했어요. [' + (code ? code + ': ' : '') + msg + ']';
+}
 async function isOwner() {
   const { data, error } = await CLIENT.rpc('is_owner');
   if (error) throw error;
@@ -446,10 +457,10 @@ $('#gf').addEventListener('submit', async e => {
   const b = $('#gb'); b.disabled = true; b.textContent = '확인 중…'; $('#gm').textContent = '';
   try {
     const { error } = await CLIENT.auth.signInWithPassword({ email: $('#ge').value.trim(), password: $('#gp').value });
-    if (error) return showGate('이메일 또는 비밀번호가 맞지 않아요.');
+    if (error) { console.error(error); return showGate(loginErrorText(error)); }
     if (!(await isOwner())) { await CLIENT.auth.signOut(); return showGate('이 계정은 볼 권한이 없어요.'); }
     $('#gp').value = ''; enter();
-  } catch (x) { console.error(x); showGate('로그인 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'); }
+  } catch (x) { console.error(x); showGate('로그인 중 문제가 생겼어요. [' + ((x && (x.code ? x.code + ': ' : '') + (x.message || x)) || '') + ']'); }
 });
 $('#lo').addEventListener('click', async () => {
   if (!confirm('로그아웃할까요?')) return;
