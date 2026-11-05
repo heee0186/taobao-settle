@@ -86,6 +86,7 @@ async function initCloud() {
   if (meta) up.push('meta');
   if (up.length) mark(...up);
   render();
+  translate(null, true);
 }
 
 /* ---------- 사람 관리 ---------- */
@@ -191,7 +192,7 @@ function commit(os) {
   let n = 0, d = 0; const ids = [];
   os.forEach(o => { if (S.orders[o.id]) d++; else { S.orders[o.id] = o; ids.push(o.id); n++; } });
   if (os.length) sel = os[0].date;
-  mark(...ids); msg(n + '건을 추가했어요' + (d ? ' (이미 있는 ' + d + '건은 제외)' : '') + '.');
+  mark(...ids); if (ids.length) setTimeout(() => translate(null, true), 0); msg(n + '건을 추가했어요' + (d ? ' (이미 있는 ' + d + '건은 제외)' : '') + '.');
 }
 
 /* ---------- 상품명 한국어 번역 (DeepL, /api/translate) ---------- */
@@ -217,33 +218,35 @@ async function deepl(texts) {
   }
   return out;
 }
-async function translate(d) {
+// 아직 번역 안 된 중국어(상품명·옵션·상점명·배송 기록)를 한 번에 번역
+function shipLatest(sh) { const e = (sh.st || [])[0]; if (!e || /^\?+$/.test(e.p.trim())) return ''; return cleanShipText(e.p); }
+async function translate(d, auto) {
   if (trD) return;
-  const T = [], O = [];
-  Object.values(S.orders).filter(o => o.date === d).forEach(o => o.items.forEach(i => {
-    if (!i.ko && !T.includes(i.title)) T.push(i.title);
-    if (i.opt && !i.optKo && !O.includes(i.opt)) O.push(i.opt);
-  }));
-  if (!T.length && !O.length) { trMsg = '이미 모두 번역돼 있어요.'; render(); return; }
-  trD = d; trMsg = '번역하는 중이에요…'; render();
-  try {
-    const src = [...T.map(cleanTitle), ...O.map(cleanOpt)];
-    const uniq = [...new Set(src)];
-    const tr = await deepl(uniq), map = {};
-    uniq.forEach((s, x) => { if (typeof tr[x] === 'string' && tr[x].trim()) map[s] = tr[x].trim(); });
-    const mt = {}, mo = {};
-    T.forEach((s, x) => { const v = map[src[x]]; if (v) mt[s] = v; });
-    O.forEach((s, x) => { const v = map[src[T.length + x]]; if (v) mo[s] = v; });
-    const up = [];
-    Object.values(S.orders).forEach(od => {
-      let ch = false;
-      od.items.forEach(i => {
-        if (!i.ko && mt[i.title]) { i.ko = mt[i.title]; ch = true; }
-        if (!i.optKo && mo[i.opt]) { i.optKo = mo[i.opt]; ch = true; }
-      });
-      if (ch) up.push(od.id);
+  const jobs = [], direct = new Set();  // [원문(번역에 보낼 글), 적용 함수]
+  // 중국어가 없는 글(예: 'XL')은 번역 없이 그대로 씀
+  const add = (src, fn) => { if (!src) return; if (/[\u4e00-\u9fff]/.test(src)) jobs.push([src, fn]); else direct.add(fn(src)); };
+  Object.values(S.orders).forEach(o => {
+    o.items.forEach(i => {
+      if (!i.ko) add(cleanTitle(i.title), v => { i.ko = v; return o.id; });
+      if (i.opt && !i.optKo) add(cleanOpt(i.opt), v => { i.optKo = v; return o.id; });
     });
-    if (up.length) mark(...up);
+    if (o.shop && !o.shopKo) add(o.shop, v => { o.shopKo = v; return o.id; });
+  });
+  Object.values(S.ship || {}).forEach(sh => {
+    if (!S.orders[sh.id] && sh.title && !sh.tko) add(cleanTitle(sh.title), v => { sh.tko = v; return 's:' + sh.id; });
+    const lt = shipLatest(sh);
+    if (lt && sh.lsrc !== lt) add(lt, v => { sh.lko = v; sh.lsrc = lt; return 's:' + sh.id; });
+  });
+  if (direct.size) mark(...direct);
+  if (!jobs.length) { if (direct.size) render(); if (!auto) { trMsg = '이미 모두 번역돼 있어요.'; render(); } return; }
+  trD = d || 'all'; trMsg = '번역하는 중이에요…'; render();
+  try {
+    const uniq = [...new Set(jobs.map(j => j[0]))];
+    const tr = await deepl(uniq), map = {};
+    uniq.forEach((x, k) => { if (typeof tr[k] === 'string' && tr[k].trim()) map[x] = tr[k].trim(); });
+    const up = new Set();
+    jobs.forEach(([src, fn]) => { if (map[src]) up.add(fn(map[src])); });
+    if (up.size) mark(...up);
     trMsg = '';
   } catch (e) {
     const s = e && e.status, er = e && e.error;
@@ -256,6 +259,14 @@ async function translate(d) {
   }
   trD = null; render();
 }
+// 원문 보기 (기본은 숨김)
+let raw = false; try { raw = localStorage.getItem('tbRaw') === '1'; } catch (e) {}
+const ST_KO = { '卖家已发货': '발송됨', '交易成功': '거래 완료', '买家已付款': '결제 완료', '等待买家付款': '결제 대기', '交易关闭': '거래 취소', '退款中': '환불 중', '退款成功': '환불 완료' };
+const stKo = t => raw ? t : (Object.keys(ST_KO).find(k => (t || '').includes(k)) ? ST_KO[Object.keys(ST_KO).find(k => t.includes(k))] : '');
+const EX_KO = [['申通', '신통택배'], ['中通', '중통택배'], ['圆通', '위안퉁택배'], ['韵达', '윈다택배'], ['顺丰', '순펑택배'], ['极兔', '지투택배'], ['京东', '징둥택배'], ['邮政', '중국우정'], ['EMS', 'EMS'], ['德邦', '더방택배'], ['百世', '바이스택배'], ['菜鸟', '차이냐오']];
+const exKo = t => raw || !t ? t : ((EX_KO.find(([k]) => t.includes(k)) || [0, '중국 택배'])[1]);
+const shopKo = o => raw ? o.shop : (o.shopKo || o.shop);
+const rawBtn = () => '<button class="txt" data-a="raw">' + (raw ? '원문 숨기기' : '원문 보기') + '</button>';
 function setKo(oid, x, v) {
   const t = S.orders[oid].items[x].title, up = [];
   Object.values(S.orders).forEach(o => { let ch = false; o.items.forEach(i => { if (i.title === t) { if (v) i.ko = v; else delete i.ko; ch = true; } }); if (ch) up.push(o.id); });
@@ -295,13 +306,14 @@ function importShip(B) {
       ex: o.ex || cur.ex || '', no: o.no || cur.no || '',
       st: st.slice().sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14),
       stage: Math.max(c.stage, cur.got ? 5 : -1), m: c.m, pk: c.m.out || '',
-      at: B.at || new Date().toISOString(), kr: cur.kr || '', got: !!cur.got
+      at: B.at || new Date().toISOString(), kr: cur.kr || '', got: !!cur.got, tko: cur.tko || '', lko: cur.lko || '', lsrc: cur.lsrc || ''
     };
     if (S.orders[o.id]) linked++;
     up.push('s:' + o.id); n++;
   });
   if (up.length) mark(...up);
   view = 'ship';
+  setTimeout(() => translate(null, true), 0);
   msg('주문 ' + n + '건의 배송 기록을 가져왔어요' + (n - linked ? ' (정산에 아직 없는 주문 ' + (n - linked) + '건 포함)' : '') + '.');
 }
 // 같은 시각에 창고에서 출고된 주문끼리 한 소포로 묶음
@@ -319,13 +331,17 @@ const localAt = iso => { const d = new Date(iso); return isNaN(d) ? '' : (d.getM
 const hm = t => t ? md(t) + ' ' + t.slice(11, 16) : '';
 function shipName(s) {
   const o = S.orders[s.id];
-  if (o && o.items[0]) return (o.items[0].ko || o.items[0].title) + (o.items.length > 1 ? ' 외 ' + (o.items.length - 1) + '개' : '');
-  return s.title || s.shop || s.id;
+  if (o && o.items[0]) return ((raw ? '' : o.items[0].ko) || o.items[0].title) + (o.items.length > 1 ? ' 외 ' + (o.items.length - 1) + '개' : '');
+  return (raw ? '' : s.tko) || s.title || s.shop || s.id;
 }
+function cleanShipText(p) { return p.replace(/，?【?物流问题[^】]*】?|，?可关注[^，。]*|如遇问题[^，。]*|（[^）]*外呼[^）]*）/g, '').replace(/[，。\s]+$/, '').slice(0, 80); }
+const STG_DESC = ['중국 택배로 웨이하이 창고에 가는 중이에요', '웨이하이 창고에서 합포장을 기다리는 중이에요', '한국으로 가는 중이에요', '한국 세관에서 통관 중이에요', '한국 택배로 배송 중이에요', '받았어요'];
 function lastText(s) {
   const e = s.st[0]; if (!e) return '아직 발송 전이에요';
-  if (/^\?+$/.test(e.p.trim())) return '한국 택배 구간 (타오바오 기록은 한글이 깨져서 안 보여요)';
-  return e.p.replace(/，?【?物流问题[^】]*】?|，?可关注[^，。]*|如遇问题[^，。]*|（[^）]*外呼[^）]*）/g, '').slice(0, 80);
+  if (/^\?+$/.test(e.p.trim())) return '한국 택배로 배송 중이에요. 국내 운송장 번호로 조회해 보세요.';
+  if (raw) return cleanShipText(e.p);
+  const lt = cleanShipText(e.p);
+  return (s.lko && s.lsrc === lt) ? s.lko : STG_DESC[Math.max(s.stage, 0)];
 }
 function bar(stage) {
   return '<div class="bar">' + STG.map((l, i) => '<span class="' + (i <= stage ? 'on' : '') + (i === stage ? ' cur' : '') + '" title="' + l + '"></span>').join('') + '</div>';
@@ -338,7 +354,7 @@ function parcelCard(p) {
   if (!p.got) h += '<p class="lt">' + esc(lastText(p.os.slice().sort((a, b) => ((a.st[0] || {}).t < (b.st[0] || {}).t ? 1 : -1))[0])) + '</p>';
   if (ms.length) h += '<div class="ms">' + ms.map(([k, l]) => '<span>' + l + ' <b>' + md(m[k]) + '</b></span>').join('') + '</div>';
   h += '<ul class="po">' + p.os.map(s => '<li><span class="nm">' + esc(shipName(s)) + '</span><span class="mut">' + esc(md(s.date)) + ' 주문' +
-    (s.stage < 2 && s.ex ? ' · ' + esc(s.ex) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
+    (s.stage < 2 && s.ex ? ' · ' + esc(exKo(s.ex)) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
   if (p.stage >= 3 || p.kr) {
     h += '<div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="국내 운송장 번호 (문자로 받은 번호)">' +
       (p.kr ? '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버로 조회</a>' : '') + '</div>';
@@ -349,7 +365,7 @@ function parcelCard(p) {
 function shipView() {
   const ps = parcels(), act = ps.filter(p => !p.got), done = ps.filter(p => p.got);
   const at = Object.values(S.ship).map(s => s.at).sort().pop();
-  let h = '<div class="card"><div class="hd"><h2>배송 현황</h2><span class="mut">' + (at ? '기록 ' + localAt(at) + ' 기준' : '') + '</span></div>' +
+  let h = '<div class="card"><div class="hd"><h2>배송 현황</h2><span class="mut">' + (at ? '기록 ' + localAt(at) + ' 기준 · ' : '') + rawBtn() + '</span></div>' +
     '<p class="sub" style="margin:8px 0 0">타오바오 주문 화면에서 <b>타오바오 물류</b> 북마크를 누르고, 복사한 내용을 왼쪽 입력칸에 붙여넣으면 최신 상태로 바뀌어요. ' +
     '<a href="bookmarklet.html" target="_blank" rel="noopener">북마크 설치 방법</a></p></div>';
   if (!ps.length) return h + '<p class="empty">아직 가져온 배송 기록이 없어요.<br><a href="bookmarklet.html" target="_blank" rel="noopener">북마크 버튼부터 설치해 주세요</a></p>';
@@ -401,28 +417,28 @@ function summary(d) {
 function titleRow(o, i, x) {
   const k = o.id + ':' + x;
   if (ed === k) return '<div class="ti"><input id="ek" class="wide" type="text" data-o="' + o.id + '" data-x="' + x + '" value="' + esc(i.ko || '') + '" placeholder="한국어 이름 (비우면 원문)"></div><div class="zh">' + esc(i.title) + '</div>';
-  return '<div class="ti"><span class="nm" title="' + esc(i.title) + '">' + esc(i.ko || i.title) + '</span><button class="txt" data-a="ed" data-k="' + k + '">수정</button></div>' +
-    (i.ko ? '<div class="zh" title="' + esc(i.title) + '">' + esc(i.title) + '</div>' : '');
+  return '<div class="ti"><span class="nm">' + esc((raw ? '' : i.ko) || i.title) + '</span><button class="txt" data-a="ed" data-k="' + k + '">수정</button></div>' +
+    (i.ko && raw ? '<div class="zh" title="' + esc(i.title) + '">' + esc(i.title) + '</div>' : '');
 }
 function detail(d) {
   const c = calc(d);
   const bad = c.os.filter(o => Math.abs(o.items.reduce((s, i) => s + i.price * i.qty, 0) + o.ship - o.paid) > 0.02).length;
   const need = c.os.some(o => o.items.some(i => !i.ko || (i.opt && !i.optKo)));
-  let h = '<div class="card"><div class="hd"><h2>' + d + '</h2>' +
-    (arm === d ? '<button class="txt danger" data-a="del2" data-d="' + d + '">정말 삭제</button>' : '<button class="txt" data-a="del" data-d="' + d + '">이 날짜 삭제</button>') + '</div>' +
+  let h = '<div class="card"><div class="hd"><h2>' + d + '</h2><span class="hda">' + rawBtn() +
+    (arm === d ? '<button class="txt danger" data-a="del2" data-d="' + d + '">정말 삭제</button>' : '<button class="txt" data-a="del" data-d="' + d + '">이 날짜 삭제</button>') + '</span></div>' +
     '<div class="pay"><label class="fld"><span>카드 청구액</span><span class="amt"><input id="cd" type="number" inputmode="numeric" value="' + (c.card || '') + '" data-d="' + d + '" placeholder="0">원</span></label>' +
     '<div class="rate">' + (c.rate ? '<b>' + c.rate.toFixed(2) + '</b> 원/위안' : '<span class="mut">청구액을 넣으면 환율이 나와요</span>') +
     '<span class="mut">주문 ' + c.os.length + '건 · ' + yu(c.tot) + '</span></div></div>';
   if (c.tot < 199 || c.tot > 900) h += '<p class="note">합계가 199~900위안 범위를 벗어났어요.</p>';
   if (bad) h += '<p class="note">금액이 맞지 않는 주문이 ' + bad + '건 있어요. 붙여넣기에서 빠진 줄이 없는지 확인해 주세요.</p>';
-  if (need || trD === d || trMsg) h += '<div class="tr"><span class="sub">' + esc(trD === d || trMsg ? trMsg : '상품명이 아직 중국어예요.') + '</span>' +
-    (need || trD === d ? '<button class="btn" data-a="tr" data-d="' + d + '"' + (trD ? ' disabled' : '') + '>' + (trD === d ? '번역 중…' : '한국어로 번역') + '</button>' : '') + '</div>';
+  if (need || trD || trMsg) h += '<div class="tr"><span class="sub">' + esc(trD || trMsg ? trMsg : '상품명이 아직 중국어예요.') + '</span>' +
+    (need || trD ? '<button class="btn" data-a="tr" data-d="' + d + '"' + (trD ? ' disabled' : '') + '>' + (trD ? '번역 중…' : '한국어로 번역') + '</button>' : '') + '</div>';
   h += '</div>';
   c.os.forEach(o => {
     const cnt = {}; o.items.forEach(i => cnt[i.title] = (cnt[i.title] || 0) + 1);
     const sp = S.ship[o.id];
-    h += '<div class="card ord"><div class="hd"><span class="shop">' + esc(o.shop) + (sp ? ' <button class="stg s' + Math.max(sp.got ? 5 : sp.stage, 0) + '" data-a="view" data-v="ship">' + (sp.got ? '받음' : sp.stage < 0 ? '발송 전' : STG[sp.stage]) + '</button>' : '') + '</span>' + (S.people.length > 1 ? allSel('주문 전체', 'data-o="' + o.id + '"') : '') + '</div>' +
-      '<div class="mut">' + esc(o.status) + ' · ' + yu(o.paid) + (o.ship ? ' (중국 내 배송 ' + yu(o.ship) + ' 포함)' : '') + '</div>';
+    h += '<div class="card ord"><div class="hd"><span class="shop">' + esc(shopKo(o)) + (sp ? ' <button class="stg s' + Math.max(sp.got ? 5 : sp.stage, 0) + '" data-a="view" data-v="ship">' + (sp.got ? '받음' : sp.stage < 0 ? '발송 전' : STG[sp.stage]) + '</button>' : '') + '</span>' + (S.people.length > 1 ? allSel('주문 전체', 'data-o="' + o.id + '"') : '') + '</div>' +
+      '<div class="mut">' + (stKo(o.status) ? esc(stKo(o.status)) + ' · ' : '') + yu(o.paid) + (o.ship ? ' (중국 내 배송 ' + yu(o.ship) + ' 포함)' : '') + '</div>';
     let open = false;
     o.items.forEach((i, x) => {
       if (o.items.findIndex(j => j.title === i.title) === x) {
@@ -431,7 +447,7 @@ function detail(d) {
         if (cnt[i.title] > 1 && S.people.length > 1) h += '<div class="grp"><span>옵션 여러 개 · 함께 산 물건일 수 있어요</span>' + allSel('묶음 지정', 'data-o="' + o.id + '" data-x="' + x + '"') + '</div>';
       }
       c.U.filter(u => u.o.id === o.id && u.x === x).forEach(u => {
-        h += '<div class="u"><span class="op" title="' + esc(i.opt) + '">' + esc(i.optKo || i.opt || '-') + (i.qty > 1 ? ' · ' + (u.u + 1) + '/' + i.qty : '') + '</span>' +
+        h += '<div class="u"><span class="op" title="' + esc(i.opt) + '">' + esc((raw ? '' : i.optKo) || i.opt || '-') + (i.qty > 1 ? ' · ' + (u.u + 1) + '/' + i.qty : '') + '</span>' +
           '<span class="pr"><span class="mut">' + yu(u.cny) + '</span>' + (c.card ? won(u.w) : '') + '</span>' + whoSel(u.k) + '</div>';
       });
     });
@@ -467,6 +483,7 @@ document.addEventListener('click', e => {
   const a = b.dataset.a, D = b.dataset;
   if (a === 'pd') { pend.on[D.d] = b.checked; return; }
   if (a === 'tr') { translate(D.d); return; }
+  if (a === 'raw') { raw = !raw; try { localStorage.setItem('tbRaw', raw ? '1' : '0'); } catch (x) {} }
   if (a !== 'pdel' && a !== 'pdel2') parm = null;
   if (a === 'parse') {
     const t = $('#t').value.trim();

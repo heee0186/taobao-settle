@@ -198,3 +198,8 @@ button.stg{cursor:pointer;margin-left:4px}
 details.dn{margin-top:4px}
 details.dn summary{cursor:pointer;color:var(--sub);font-size:13px;padding:8px 2px 12px}
 @media (max-width:760px){.dt.sh{margin-bottom:0}}
+
+/* 원문 보기 · 테두리 잘림 방지 */
+.hda{display:flex;align-items:center;gap:14px;flex:none}
+@media (min-width:761px){aside{padding:3px;margin:-3px}}
+@media (max-width:760px){.dl{padding:4px 12px 8px}}
