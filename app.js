@@ -4,7 +4,7 @@ const TABLE = 'tb_docs';
 
 const $ = s => document.querySelector(s);
 const LK = 'tbSettle1';
-let S = { orders: {}, cards: {}, assign: {}, people: ['나'], def: '나' }, sel = null, pend = null, arm = null, ed = null, pe = null, parm = null, pm = false;
+let S = { orders: {}, cards: {}, assign: {}, people: ['나'], def: '나', ship: {} }, view = 'date', sel = null, pend = null, arm = null, ed = null, pe = null, parm = null, pm = false;
 try { const r = localStorage.getItem(LK); if (r) S = Object.assign(S, JSON.parse(r)); } catch (e) {}
 const saveLocal = () => { try { localStorage.setItem(LK, JSON.stringify(S)); } catch (e) {} };
 const won = n => Math.round(n).toLocaleString('ko-KR') + '원';
@@ -14,6 +14,7 @@ const msg = t => { $('#ms').textContent = t; };
 const clone = v => JSON.parse(JSON.stringify(v));
 function fixDef() { if (!S.people.length) S.people = ['나']; if (!S.people.includes(S.def)) S.def = S.people[0]; }
 fixDef();
+if (!S.ship || typeof S.ship !== 'object') S.ship = {};
 // 지정 안 된 품목은 기본 구매자
 const who = k => S.people.includes(S.assign[k]) ? S.assign[k] : S.def;
 
@@ -22,7 +23,7 @@ let SB = null, tmr = null, busy = false;
 const dirty = new Set(), gone = new Set();
 const SV = { on: ['', '저장됨'], saving: ['', '저장 중…'], off: ['', '이 기기에만 저장'], err: ['err', '저장 실패 · 다음 변경 때 다시 시도'], loadErr: ['err', '불러오기 실패 · 이 기기 내용 표시 중'] };
 function setCloud(s) { const e = $('#sv'); e.className = 'sv ' + SV[s][0]; e.textContent = SV[s][1]; }
-const docId = k => k === 'meta' ? 'meta' : 'o_' + k;
+const docId = k => k === 'meta' ? 'meta' : k.startsWith('s:') ? 's_' + k.slice(2) : 'o_' + k;
 function mark(...ks) { ks.forEach(k => { dirty.add(k); gone.delete(k); }); saveLocal(); sched(); }
 function markGone(id) { gone.add(id); dirty.delete(id); saveLocal(); sched(); }
 function sched() { if (!SB) return; clearTimeout(tmr); tmr = setTimeout(flush, 700); }
@@ -38,7 +39,7 @@ async function flush() {
   const ks = [...dirty], gs = [...gone];
   dirty.clear(); gone.clear();
   try {
-    const rows = ks.map(k => ({ id: docId(k), body: k === 'meta' ? { people: S.people, cards: S.cards, def: S.def } : orderDoc(k), updated_at: new Date().toISOString() }))
+    const rows = ks.map(k => ({ id: docId(k), body: k === 'meta' ? { people: S.people, cards: S.cards, def: S.def } : k.startsWith('s:') ? (S.ship[k.slice(2)] || null) : orderDoc(k), updated_at: new Date().toISOString() }))
       .filter(r => r.body);
     if (rows.length) { const { error } = await SB.from(TABLE).upsert(rows); if (error) throw error; }
     if (gs.length) { const { error } = await SB.from(TABLE).delete().in('id', gs.map(docId)); if (error) throw error; }
@@ -65,10 +66,11 @@ async function initCloud() {
     }
   } catch (e) { console.error(e); setCloud('loadErr'); return; }
   SB = sb;
-  const R = { orders: {}, cards: {}, assign: {}, people: null, def: null };
+  const R = { orders: {}, cards: {}, assign: {}, people: null, def: null, ship: {} };
   docs.forEach(d => {
     const v = d.body || {};
     if (d.id === 'meta') { R.people = v.people; R.cards = v.cards || {}; R.def = v.def || null; }
+    else if (d.id.startsWith('s_') && v.id) R.ship[v.id] = v;
     else if (d.id.startsWith('o_') && v.id) { const as = v.as || {}; delete v.as; R.orders[v.id] = v; for (const k in as) R.assign[v.id + ':' + k] = as[k]; }
   });
   // 수파베이스 내용이 기준. 이 브라우저에만 있던 주문은 올림.
@@ -77,6 +79,7 @@ async function initCloud() {
     R.orders[id] = L.orders[id]; up.push(id);
     for (const k in L.assign) if (k.startsWith(id + ':')) R.assign[k] = L.assign[k];
   }
+  for (const id in (L.ship || {})) if (!R.ship[id]) { R.ship[id] = L.ship[id]; up.push('s:' + id); }
   if (!R.people) { R.people = L.people || ['나']; R.def = L.def; }
   for (const d in L.cards) if (+L.cards[d] && !(+R.cards[d])) { R.cards[d] = L.cards[d]; meta = true; }
   S = R; fixDef(); saveLocal(); setCloud('on');
@@ -259,6 +262,103 @@ function setKo(oid, x, v) {
   mark(...up);
 }
 
+
+/* ---------- 배송 현황 (타오바오 물류 북마크로 가져온 기록) ---------- */
+const STG = ['중국 배송', '창고 도착', '국제 운송', '한국 통관', '국내 배송', '받음'];
+// 기록 전체를 보고 어디까지 왔는지와 단계별 시각을 뽑음
+function classify(st) {
+  const s = (st || []).slice().sort((a, b) => (a.t < b.t ? -1 : 1)); // 오래된 것부터
+  const first = (re, after) => { const x = s.find(e => re.test(e.p) && (!after || e.t >= after)); return x ? x.t : null; };
+  const m = {};
+  m.cn = s.length ? s[0].t : null;
+  m.wh = first(/集运仓|到达仓库|入库成功/);
+  m.out = first(/包裹已出库|已交接成功/);
+  m.sail = first(/离港|干线出发|航班起飞/);
+  m.arr = first(/到达目的地/);
+  m.cus = m.arr ? first(/清关/, m.arr) : null;
+  m.clr = m.arr ? first(/清关完成/, m.arr) : null;
+  m.dom = m.arr ? first(/目的地物流商|目的地分拨|派送|派件/, m.arr) : null;
+  m.got = m.arr ? first(/签收|妥投|已送达/, m.arr) : null;
+  const stage = !s.length ? -1 : m.got ? 5 : (m.dom || m.clr) ? 4 : (m.arr || m.cus) ? 3 : (m.out || m.sail) ? 2 : m.wh ? 1 : 0;
+  return { stage, m };
+}
+function importShip(B) {
+  const list = Array.isArray(B.orders) ? B.orders : [];
+  const up = []; let n = 0, linked = 0;
+  list.forEach(o => {
+    if (!o || !/^\d+$/.test(String(o.id))) return;
+    const cur = S.ship[o.id] || {};
+    const st = Array.isArray(o.st) ? o.st.filter(e => e && e.t && typeof e.p === 'string') : (cur.st || []);
+    const c = classify(st);
+    S.ship[o.id] = {
+      id: String(o.id), date: o.date || cur.date || '', shop: o.shop || cur.shop || '', title: o.title || cur.title || '',
+      ex: o.ex || cur.ex || '', no: o.no || cur.no || '',
+      st: st.slice().sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14),
+      stage: Math.max(c.stage, cur.got ? 5 : -1), m: c.m, pk: c.m.out || '',
+      at: B.at || new Date().toISOString(), kr: cur.kr || '', got: !!cur.got
+    };
+    if (S.orders[o.id]) linked++;
+    up.push('s:' + o.id); n++;
+  });
+  if (up.length) mark(...up);
+  view = 'ship';
+  msg('주문 ' + n + '건의 배송 기록을 가져왔어요' + (n - linked ? ' (정산에 아직 없는 주문 ' + (n - linked) + '건 포함)' : '') + '.');
+}
+// 같은 시각에 창고에서 출고된 주문끼리 한 소포로 묶음
+function parcels() {
+  const g = {};
+  Object.values(S.ship).forEach(s => { const k = s.pk ? 'p' + s.pk : 'o' + s.id; (g[k] = g[k] || []).push(s); });
+  return Object.values(g).map(os => {
+    const stage = Math.min(...os.map(s => s.got ? 5 : s.stage));
+    const last = os.map(s => (s.st[0] || {}).t || '').sort().pop() || '';
+    return { os, stage, last, kr: (os.find(s => s.kr) || {}).kr || '', got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
+  }).sort((a, b) => (a.got - b.got) || (b.stage - a.stage) || (a.last < b.last ? 1 : -1));
+}
+const md = t => t ? (+t.slice(5, 7)) + '/' + (+t.slice(8, 10)) : '';
+const localAt = iso => { const d = new Date(iso); return isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const hm = t => t ? md(t) + ' ' + t.slice(11, 16) : '';
+function shipName(s) {
+  const o = S.orders[s.id];
+  if (o && o.items[0]) return (o.items[0].ko || o.items[0].title) + (o.items.length > 1 ? ' 외 ' + (o.items.length - 1) + '개' : '');
+  return s.title || s.shop || s.id;
+}
+function lastText(s) {
+  const e = s.st[0]; if (!e) return '아직 발송 전이에요';
+  if (/^\?+$/.test(e.p.trim())) return '한국 택배 구간 (타오바오 기록은 한글이 깨져서 안 보여요)';
+  return e.p.replace(/，?【?物流问题[^】]*】?|，?可关注[^，。]*|如遇问题[^，。]*|（[^）]*外呼[^）]*）/g, '').slice(0, 80);
+}
+function bar(stage) {
+  return '<div class="bar">' + STG.map((l, i) => '<span class="' + (i <= stage ? 'on' : '') + (i === stage ? ' cur' : '') + '" title="' + l + '"></span>').join('') + '</div>';
+}
+function parcelCard(p) {
+  const s0 = p.os[0], m = s0.m || {};
+  const ms = [['wh', '창고'], ['out', '출고'], ['sail', '출항'], ['arr', '한국 도착'], ['clr', '통관 완료'], ['dom', '택배 인수']].filter(([k]) => m[k]);
+  let h = '<div class="card pc' + (p.got ? ' done' : '') + '"><div class="hd"><span class="stg s' + Math.max(p.stage, 0) + '">' + (p.stage < 0 ? '발송 전' : STG[p.stage]) + '</span>' +
+    '<span class="mut">' + (p.os.length > 1 ? '주문 ' + p.os.length + '건 합포장 · ' : '') + (p.last ? '최근 ' + hm(p.last) : '') + '</span></div>' + bar(p.stage);
+  if (!p.got) h += '<p class="lt">' + esc(lastText(p.os.slice().sort((a, b) => ((a.st[0] || {}).t < (b.st[0] || {}).t ? 1 : -1))[0])) + '</p>';
+  if (ms.length) h += '<div class="ms">' + ms.map(([k, l]) => '<span>' + l + ' <b>' + md(m[k]) + '</b></span>').join('') + '</div>';
+  h += '<ul class="po">' + p.os.map(s => '<li><span class="nm">' + esc(shipName(s)) + '</span><span class="mut">' + esc(md(s.date)) + ' 주문' +
+    (s.stage < 2 && s.ex ? ' · ' + esc(s.ex) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
+  if (p.stage >= 3 || p.kr) {
+    h += '<div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="국내 운송장 번호 (문자로 받은 번호)">' +
+      (p.kr ? '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버로 조회</a>' : '') + '</div>';
+  }
+  h += '<div class="hd ft"><span></span><button class="txt" data-a="got" data-g="' + p.key + '">' + (p.got ? '받음 취소' : '받았어요') + '</button></div></div>';
+  return h;
+}
+function shipView() {
+  const ps = parcels(), act = ps.filter(p => !p.got), done = ps.filter(p => p.got);
+  const at = Object.values(S.ship).map(s => s.at).sort().pop();
+  let h = '<div class="card"><div class="hd"><h2>배송 현황</h2><span class="mut">' + (at ? '기록 ' + localAt(at) + ' 기준' : '') + '</span></div>' +
+    '<p class="sub" style="margin:8px 0 0">타오바오 주문 화면에서 <b>타오바오 물류</b> 북마크를 누르고, 복사한 내용을 왼쪽 입력칸에 붙여넣으면 최신 상태로 바뀌어요. ' +
+    '<a href="bookmarklet.html" target="_blank" rel="noopener">북마크 설치 방법</a></p></div>';
+  if (!ps.length) return h + '<p class="empty">아직 가져온 배송 기록이 없어요.<br><a href="bookmarklet.html" target="_blank" rel="noopener">북마크 버튼부터 설치해 주세요</a></p>';
+  h += act.length ? act.map(parcelCard).join('') : '<p class="empty">배송 중인 소포가 없어요.</p>';
+  if (done.length) h += '<details class="dn"><summary>받은 소포 ' + done.length + '개</summary>' + done.slice(0, 20).map(parcelCard).join('') + '</details>';
+  return h;
+}
+function shipKeys(g) { return g.split(',').filter(id => S.ship[id]); }
+
 /* ---------- 계산 ---------- */
 function calc(date) {
   const os = Object.values(S.orders).filter(o => o.date === date), U = [];
@@ -320,7 +420,8 @@ function detail(d) {
   h += '</div>';
   c.os.forEach(o => {
     const cnt = {}; o.items.forEach(i => cnt[i.title] = (cnt[i.title] || 0) + 1);
-    h += '<div class="card ord"><div class="hd"><span class="shop">' + esc(o.shop) + '</span>' + (S.people.length > 1 ? allSel('주문 전체', 'data-o="' + o.id + '"') : '') + '</div>' +
+    const sp = S.ship[o.id];
+    h += '<div class="card ord"><div class="hd"><span class="shop">' + esc(o.shop) + (sp ? ' <button class="stg s' + Math.max(sp.got ? 5 : sp.stage, 0) + '" data-a="view" data-v="ship">' + (sp.got ? '받음' : sp.stage < 0 ? '발송 전' : STG[sp.stage]) + '</button>' : '') + '</span>' + (S.people.length > 1 ? allSel('주문 전체', 'data-o="' + o.id + '"') : '') + '</div>' +
       '<div class="mut">' + esc(o.status) + ' · ' + yu(o.paid) + (o.ship ? ' (중국 내 배송 ' + yu(o.ship) + ' 포함)' : '') + '</div>';
     let open = false;
     o.items.forEach((i, x) => {
@@ -342,16 +443,20 @@ function detail(d) {
 function render() {
   const ds = allDates();
   if (!sel || !ds.includes(sel)) sel = ds[0] || null;
-  $('#dl').innerHTML = ds.map(d => {
+  const ps = parcels(), act = ps.filter(p => !p.got);
+  const shipBtn = '<button class="dt sh' + (view === 'ship' ? ' on' : '') + '" data-a="view" data-v="ship"><b>배송 현황</b><span class="r">' + (!ps.length ? '' : act.length ? '진행 중 ' + act.length : '모두 받음') + '</span>' +
+    '<span class="mut">' + (!ps.length ? '타오바오 물류 가져오기' : act.length ? act.map(p => p.stage < 0 ? '발송 전' : STG[p.stage]).filter((v, i, a) => a.indexOf(v) === i).slice(0, 2).join(' · ') : '') + '</span><span></span></button>';
+  $('#dl').innerHTML = shipBtn + ds.map(d => {
     const c = calc(d);
-    return '<button class="dt' + (d === sel ? ' on' : '') + '" data-a="sel" data-d="' + d + '"><b>' + d + '</b><span class="r">' + yu(c.tot) + '</span>' +
+    return '<button class="dt' + (view === 'date' && d === sel ? ' on' : '') + '" data-a="sel" data-d="' + d + '"><b>' + d + '</b><span class="r">' + yu(c.tot) + '</span>' +
       '<span class="mut">' + c.os.length + '건</span><span class="r' + (c.card ? '' : ' need') + '">' + (c.card ? won(c.card) : '청구액 없음') + '</span></button>';
   }).join('');
   let h = '';
   if (pend) h += '<div class="card"><h3>여러 날짜가 섞여 있어요</h3><p class="sub">포함할 날짜를 고르세요. 가장 많은 날짜만 골라 두었어요.</p>' +
     pend.ds.map(d => '<label class="ck"><input type="checkbox" data-a="pd" data-d="' + d + '"' + (pend.on[d] ? ' checked' : '') + '> ' + d + ' <span class="mut">' + pend.c[d] + '건</span></label>').join('') +
     '<div class="hd" style="justify-content:flex-end;margin-top:10px"><button class="txt" data-a="pno">취소</button><button class="btn" data-a="pok">선택한 날짜 추가</button></div></div>';
-  h += sel ? detail(sel) : (pend ? '' : '<p class="empty">주문 페이지를 붙여넣고 분석해서 추가를 누르면 시작돼요.</p>');
+  if (view === 'ship' && !pend) h += shipView();
+  else h += sel ? detail(sel) : (pend ? '' : '<p class="empty">주문 페이지를 붙여넣고 분석해서 추가를 누르면 시작돼요.</p>');
   $('#dt').innerHTML = h;
   const f = $('#ek') || $('#pe'); if (f) { f.focus(); f.select(); }
 }
@@ -367,11 +472,13 @@ document.addEventListener('click', e => {
     const t = $('#t').value.trim();
     if (t) {
       let B = null; if (t[0] === '{') { try { B = JSON.parse(t); } catch (x) {} }
-      if (B) importData(B); else addText(t);
+      if (B && B.app === 'tb-logistics') importShip(B); else if (B) importData(B); else { addText(t); view = 'date'; }
       $('#t').value = '';
     }
   }
-  else if (a === 'sel') { sel = D.d; arm = null; ed = null; pe = null; trMsg = ''; }
+  else if (a === 'view') { view = D.v; }
+  else if (a === 'got') { const ks = shipKeys(D.g), v = !ks.every(id => S.ship[id].got); ks.forEach(id => { S.ship[id].got = v; }); mark(...ks.map(id => 's:' + id)); }
+  else if (a === 'sel') { view = 'date'; sel = D.d; arm = null; ed = null; pe = null; trMsg = ''; }
   else if (a === 'ed') { ed = D.k; }
   else if (a === 'addp') { const v = $('#np').value.trim(); if (v && !S.people.includes(v)) { S.people.push(v); mark('meta'); } }
   else if (a === 'pm') { pm = !pm; pe = null; }
@@ -394,6 +501,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.classList.contains('krn')) { const v = t.value.replace(/[^0-9A-Za-z]/g, ''); const ks = shipKeys(t.dataset.g); ks.forEach(id => { S.ship[id].kr = v; }); mark(...ks.map(id => 's:' + id)); render(); return; }
   if (t.id === 'cd') { S.cards[t.dataset.d] = +t.value || 0; mark('meta'); render(); }
   else if (t.id === 'ek') { setKo(t.dataset.o, +t.dataset.x, t.value.trim()); ed = null; render(); }
   else if (t.classList.contains('who')) {

@@ -14,6 +14,7 @@ body{margin:0;background:var(--bg);color:var(--tx);
   font:14px/1.5 "Pretendard","Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
   font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--ac)}
 button{cursor:pointer}
 button:disabled{opacity:.45;cursor:default}
 :focus-visible{outline:2px solid var(--ac);outline-offset:2px}
@@ -169,3 +170,31 @@ label.ck{display:flex;align-items:center;gap:8px;padding:4px 0}
   label.ck input{width:18px;height:18px}
   .lo{padding:8px 0}
 }
+
+/* ===== 배송 현황 ===== */
+.dt.sh{margin-bottom:8px;background:var(--card);box-shadow:0 0 0 1px var(--ln)}
+.dt.sh.on{box-shadow:0 0 0 2px var(--ac)}
+.stg{display:inline-block;border:0;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap;vertical-align:1px;
+  background:var(--ln2);color:var(--sub)}
+button.stg{cursor:pointer;margin-left:4px}
+.stg.s2,.stg.s3{background:var(--wns);color:var(--wn)}
+.stg.s4{background:var(--acs);color:var(--ac)}
+.stg.s5{background:var(--ln2);color:var(--mut)}
+.bar{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:12px 0 8px}
+.bar span{height:5px;border-radius:3px;background:var(--ln2)}
+.bar span.on{background:var(--ac);opacity:.45}
+.bar span.cur{opacity:1}
+.lt{margin:6px 0 0;font-size:13px;color:var(--sub);line-height:1.5}
+.ms{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--mut)}
+.ms b{color:var(--tx);font-weight:600}
+.po{list-style:none;margin:12px 0 0;padding:0}
+.po li{display:flex;flex-direction:column;padding:7px 0;border-top:1px solid var(--ln2)}
+.po .nm{font-size:13px}
+.kr{display:flex;gap:8px;margin-top:10px}
+.kr input{flex:1;width:auto;min-width:0}
+.kr .btn{text-decoration:none;color:var(--tx);white-space:nowrap;display:inline-flex;align-items:center}
+.ft{margin-top:8px}
+.pc.done{opacity:.7}
+details.dn{margin-top:4px}
+details.dn summary{cursor:pointer;color:var(--sub);font-size:13px;padding:8px 2px 12px}
+@media (max-width:760px){.dt.sh{margin-bottom:0}}

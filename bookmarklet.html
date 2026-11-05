@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>타오바오 물류 가져오기 설치</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.wrap{max-width:620px;margin:0 auto;padding:28px 18px}
+.bm{display:inline-block;margin:10px 0 4px;padding:10px 18px;border-radius:10px;background:var(--ac);color:var(--acx);font-weight:700;text-decoration:none;cursor:grab}
+ol{padding-left:20px;margin:8px 0 0}
+li{margin:6px 0}
+kbd{font:12px/1 inherit;border:1px solid var(--ln);border-radius:5px;padding:2px 6px;background:var(--ln2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>타오바오 물류 가져오기</h1>
+<p class="sub">타오바오 주문 화면에서 누르면, 화면에 있는 모든 주문의 배송 기록을 한 번에 모아 줘요.</p>
+
+<div class="card">
+<h3>1. 설치 (처음 한 번만)</h3>
+<ol>
+<li>웨일에서 즐겨찾기 바를 켜요. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></li>
+<li>아래 초록 버튼을 마우스로 끌어서 즐겨찾기 바에 놓아요.</li>
+</ol>
+<a class="bm" id="bm" href="#" onclick="return false">타오바오 물류</a>
+<p class="mut" id="bmm">버튼 준비 중…</p>
+</div>
+
+<div class="card">
+<h3>2. 쓰는 법</h3>
+<ol>
+<li>PC 웨일에서 타오바오 <b>已买到的宝贝</b> 화면을 열어요. <b>待收货</b>(배송 중) 탭을 고르면 아직 안 받은 주문만 나와서 편해요.</li>
+<li>즐겨찾기 바의 <b>타오바오 물류</b>를 눌러요. 오른쪽 위에 진행 상황이 떠요.</li>
+<li>끝나면 <b>복사하기</b>를 누르고, 정산 사이트 왼쪽 입력칸에 붙여넣은 뒤 <b>분석해서 추가</b>를 눌러요.</li>
+</ol>
+<p class="mut hint">주문이 여러 쪽이면 다음 쪽으로 넘겨서 한 번 더 누르면 돼요. 주문을 하나씩 천천히 확인해서 20건이면 10초쯤 걸려요.</p>
+</div>
+<p><a href="./" class="sub">← 정산 사이트로 돌아가기</a></p>
+</div>
+<script>
+fetch('tools/bookmarklet.js').then(r => r.text()).then(src => {
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\n\s*/g, '\n').trim();
+  const a = document.getElementById('bm');
+  a.href = 'javascript:' + encodeURIComponent(code);
+  a.onclick = () => { alert('이 버튼은 여기서 누르는 게 아니라 즐겨찾기 바로 끌어다 놓는 거예요.'); return false; };
+  document.getElementById('bmm').textContent = '끌어다 놓은 뒤에는 이 페이지를 닫아도 돼요.';
+}).catch(() => { document.getElementById('bmm').textContent = '버튼을 준비하지 못했어요. 새로고침해 주세요.'; });
+</script>
+</body>
+</html>
