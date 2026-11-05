@@ -159,7 +159,7 @@ async function run(why) {
     if (rows.length) await rest(c, TABLE, { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: rows });
     const active = rows.filter(r => r.body.stage < 5 && !r.body.got).length;
     status = { ok: true, at: Date.now(), why, targets: targets.length, saved: rows.length, fail: fail.length, via, active, ms: Date.now() - started,
-      note: fail.length && !Object.keys(got).length ? '타오바오 로그인 정보를 쓰지 못했어요. 웨일에서 타오바오 주문 화면(已买到的宝贝)을 열어두면 다음 확인 때 그 화면을 통해 조회해요.' : '' };
+      note: fail.length && !Object.keys(got).length ? '타오바오에 조회하지 못했어요. 웨일에서 타오바오 로그인이 풀렸을 수 있어요. 타오바오에 다시 로그인한 뒤 지금 확인을 눌러 주세요. (그래도 안 되면 타오바오 주문 화면을 열어둔 채로 눌러 주세요)' : '' };
   } catch (e) {
     status = { ok: false, at: Date.now(), why, error: e.message === 'NEED_LOGIN' ? '정산 사이트 로그인이 필요해요.' : (e.message || String(e)) };
   }
