@@ -33,7 +33,7 @@ textarea::placeholder{color:var(--mut)}
 .ms{font-size:12px;color:var(--sub);min-height:18px;margin-bottom:10px}
 .dl{display:flex;flex-direction:column;gap:2px}
 .dt{display:grid;grid-template-columns:1fr auto;gap:0 8px;width:100%;text-align:left;padding:9px 12px;border:0;border-radius:10px;background:transparent}
-.dt:hover{background:var(--ln2)}
+@media (hover:hover){.dt:hover{background:var(--ln2)}}
 .dt.on{background:var(--card);box-shadow:0 0 0 1px var(--ln)}
 .dt b{font-weight:600}
 .dt .r{text-align:right;font-size:12px;color:var(--mut)}
@@ -114,3 +114,58 @@ label.ck{display:flex;align-items:center;gap:8px;padding:4px 0}
 .gc .go:disabled{opacity:.6}
 .ge{white-space:pre-wrap;min-height:1.2em;margin-top:10px;color:var(--er);font-size:13px;text-align:center}
 .lo{border:0;background:none;color:var(--mut);font-size:12px;padding:0;text-decoration:underline;cursor:pointer}
+
+/* ===== 반응형: 태블릿 · 모바일 ===== */
+/* 넓은 화면: 날짜가 많아도 사이드바 안에서 스크롤 */
+@media (min-width:761px){
+  aside{max-height:calc(100vh - 48px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+}
+/* 태블릿 가로 */
+@media (min-width:761px) and (max-width:1024px){
+  main{grid-template-columns:220px minmax(0,1fr);gap:18px;padding:18px}
+  aside{top:18px;max-height:calc(100vh - 36px)}
+}
+/* 태블릿 세로 · 휴대폰: 한 줄 배치 */
+@media (max-width:760px){
+  main{grid-template-columns:minmax(0,1fr);padding:12px 12px calc(20px + env(safe-area-inset-bottom,0px));gap:12px}
+  aside,section{min-width:0}
+  .brand{margin-bottom:10px}
+  textarea{height:64px}
+  .ms:empty{min-height:0;margin-bottom:4px}
+  /* 날짜 목록은 가로로 넘기기 */
+  .dl{flex-direction:row;gap:6px;overflow-x:auto;margin:0 -12px;padding:2px 12px 6px;
+    scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .dl::-webkit-scrollbar{display:none}
+  .dt{flex:0 0 auto;width:auto;min-width:148px;scroll-snap-align:start;background:var(--card);box-shadow:0 0 0 1px var(--ln)}
+  .dt.on{box-shadow:0 0 0 2px var(--ac)}
+  .card{padding:14px;border-radius:12px;margin-bottom:12px}
+  .empty{padding:24px 0}
+}
+/* 휴대폰 */
+@media (max-width:480px){
+  /* iOS에서 입력할 때 화면이 확대되지 않게 */
+  textarea,input[type=number],input[type=text],input[type=email],input[type=password],.gc input,.who{font-size:16px}
+  .amt{width:100%}
+  .amt input[type=number]{flex:1;width:auto;min-width:0}
+  .pp{grid-template-columns:minmax(0,1fr) 80px 86px;font-size:13px}
+  .ord .hd{align-items:flex-start}
+  .who{max-width:120px}
+}
+/* 아주 좁은 휴대폰: 옵션 이름은 위, 금액과 구매자는 아래 */
+@media (max-width:400px){
+  .u{grid-template-columns:minmax(0,1fr) auto;row-gap:2px;padding-top:9px}
+  .u .op{grid-column:1/-1}
+  .u .pr{text-align:left}
+  .pp{grid-template-columns:minmax(0,1fr) 72px 80px}
+}
+/* 터치 기기: 손가락으로 누르기 쉬운 크기 */
+@media (pointer:coarse){
+  .who{min-height:34px;padding:5px 26px 5px 12px}
+  .txt{padding:7px 6px;margin:-7px -6px}
+  .btn{min-height:38px;padding:7px 14px}
+  .go{padding:12px}
+  .dt{min-height:46px}
+  label.ck{padding:9px 0}
+  label.ck input{width:18px;height:18px}
+  .lo{padding:8px 0}
+}
