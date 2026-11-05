@@ -89,6 +89,26 @@ async function initCloud() {
   translate(null, true);
 }
 
+
+/* ---------- 확장 프로그램이 저장한 배송 기록을 다시 읽기 (탭으로 돌아올 때) ---------- */
+let shipLoadedAt = Date.now();
+async function reloadShip() {
+  if (!SB || busy || Date.now() - shipLoadedAt < 60000) return;
+  shipLoadedAt = Date.now();
+  try {
+    const { data, error } = await SB.from(TABLE).select('id,body').like('id', 's_%');
+    if (error) throw error;
+    let ch = false;
+    data.forEach(d => {
+      const v = d.body; if (!v || !v.id || dirty.has('s:' + v.id)) return;
+      const cur = S.ship[v.id];
+      if (!cur || cur.at !== v.at || cur.got !== v.got || cur.kr !== v.kr) { S.ship[v.id] = v; ch = true; }
+    });
+    if (ch) { saveLocal(); render(); translate(null, true); }
+  } catch (e) { console.error(e); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reloadShip(); });
+
 /* ---------- 사람 관리 ---------- */
 function touchOrdersOf(name) {
   const ids = new Set();
