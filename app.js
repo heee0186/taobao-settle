@@ -285,7 +285,7 @@ let raw = false; try { raw = localStorage.getItem('tbRaw') === '1'; } catch (e) 
 const ST_KO = { '卖家已发货': '발송됨', '交易成功': '거래 완료', '买家已付款': '결제 완료', '等待买家付款': '결제 대기', '交易关闭': '거래 취소', '退款中': '환불 중', '退款成功': '환불 완료' };
 const stKo = t => raw ? t : (Object.keys(ST_KO).find(k => (t || '').includes(k)) ? ST_KO[Object.keys(ST_KO).find(k => t.includes(k))] : '');
 const EX_KO = [['申通', '신통택배'], ['中通', '중통택배'], ['圆通', '위안퉁택배'], ['韵达', '윈다택배'], ['顺丰', '순펑택배'], ['极兔', '지투택배'], ['京东', '징둥택배'], ['邮政', '중국우정'], ['EMS', 'EMS'], ['德邦', '더방택배'], ['百世', '바이스택배'], ['菜鸟', '차이냐오']];
-const exKo = t => raw || !t ? t : ((EX_KO.find(([k]) => t.includes(k)) || [0, '중국 택배'])[1]);
+const exKo = t => { if (raw || !t) return t; const f = EX_KO.find(([k]) => t.includes(k)); return f ? f[1] : /大韩|CJ/.test(t) ? 'CJ대한통운' : /韩进/.test(t) ? '한진택배' : /乐天/.test(t) ? '롯데택배' : /[\u4e00-\u9fff]/.test(t) ? '택배' : t; };
 const shopKo = o => raw ? o.shop : (o.shopKo || o.shop);
 const rawBtn = () => '<button class="txt" data-a="raw">' + (raw ? '원문 숨기기' : '원문 보기') + '</button>';
 function setKo(oid, x, v) {
@@ -393,8 +393,13 @@ function parcels() {
     let stage = Math.min(...os.map(s => s.got ? 5 : s.stage));
     const last = os.map(s => (s.st[0] || {}).t || '').sort().pop() || '';
     const cus = (os.find(s => s.cus) || {}).cus || null;
+    // 합배송 운송장: 창고에서 묶인 뒤 주문들이 같은 번호를 갖거나, 국제·한국 택배 이름이 붙은 번호
+    const nos = os.map(s => s.no).filter(Boolean), one = [...new Set(nos)];
+    const io = os.find(s => s.no && s.stage >= 2 && /集运|国际|韩国|菜鸟|CJ|大韩|韩进|乐天|EMS|海外/.test(s.ex || ''));
+    const intl = (os.length > 1 && one.length === 1 && nos.length === os.length) ? { no: one[0], ex: os[0].ex } : io ? { no: io.no, ex: io.ex } : null;
+    const userKr = (os.find(s => s.kr) || {}).kr || '';
     if (cus && cus.found && stage < 5) stage = Math.max(stage, cusDone(cus) ? 4 : 3);  // 관세청 기록이 있으면 그 단계 반영
-    return { os, stage, last, cus, kr: (os.find(s => s.kr) || {}).kr || '', got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
+    return { os, stage, last, cus, intl, krAuto: !userKr && !!intl, kr: userKr || (intl ? intl.no : ''), got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
   }).sort((a, b) => (a.got - b.got) || (b.stage - a.stage) || (a.last < b.last ? 1 : -1));
 }
 const md = t => t ? (+t.slice(5, 7)) + '/' + (+t.slice(8, 10)) : '';
@@ -425,9 +430,10 @@ function parcelCard(p) {
   if (!p.got) h += '<p class="lt">' + esc(lastText(p.os.slice().sort((a, b) => ((a.st[0] || {}).t < (b.st[0] || {}).t ? 1 : -1))[0])) + '</p>';
   if (ms.length) h += '<div class="ms">' + ms.map(([k, l]) => '<span>' + l + ' <b>' + md(m[k]) + '</b></span>').join('') + '</div>';
   h += '<ul class="po">' + p.os.map(s => '<li><span class="nm">' + esc(shipName(s)) + '</span><span class="mut">' + esc(md(s.date)) + ' 주문' +
-    (s.stage < 2 && s.ex ? ' · ' + esc(exKo(s.ex)) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
+    (s.no && !(p.intl && p.intl.no === s.no) ? ' · ' + esc(exKo(s.ex)) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
   if (p.stage >= 2 || p.kr) {
-    h += '<label class="krl">운송장 번호 (유니패스의 House B/L)</label><div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="H B/L 번호를 붙여넣으세요">' +
+    if (p.intl) h += '<div class="iw">합배송 운송장 <b>' + esc(p.intl.no) + '</b>' + (p.intl.ex ? ' <span class="mut">' + esc(exKo(p.intl.ex)) + '</span>' : '') + '</div>';
+    h += '<label class="krl">' + (p.krAuto ? '통관·국내 조회에 쓰는 번호 (합배송 운송장 자동 사용 · 다르면 고쳐 넣으세요)' : '운송장 번호 (유니패스의 House B/L)') + '</label><div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="H B/L 번호를 붙여넣으세요">' +
       (p.kr ? '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버 배송조회</a>' : '') + '</div>' + cusBlock(p);
   }
   h += histBlock(p);

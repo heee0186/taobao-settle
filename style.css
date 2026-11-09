@@ -215,3 +215,5 @@ ul.cs li{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;padding:4
 .hist ul.cs li{border-top-color:var(--ln2)}
 details.hist{margin-top:10px}
 details.hist summary{cursor:pointer;font-size:12px;color:var(--sub)}
+.iw{margin-top:12px;font-size:13px}
+.iw b{font-weight:700;letter-spacing:.02em}
