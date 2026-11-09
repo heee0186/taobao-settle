@@ -21,6 +21,12 @@ async function supa(req) {
   };
 }
 
+function findIntl(st) {  // 합배송 운송장: '…最新物流单号为300322309912…' (창고 출고 때 기록됨)
+  const L = (st || []).map(e => e.p || '');
+  for (const p of L) { const m = p.match(/最新(物流)?(运)?单号\s*[为是:：]?\s*([A-Z0-9]{8,20})/); if (m) return m[3]; }
+  for (const p of L) { if (/入库|揽收/.test(p)) continue; const m = p.match(/(国际|转运|海外|韩国)(物流|运)?单号\s*[为是:：]?\s*([A-Z0-9]{8,20})/); if (m) return m[3]; }
+  return '';
+}
 // 정산 사이트(app.js parcels)와 같은 방식으로 소포를 묶고 조회할 번호를 고름
 function parcels(ships) {
   const g = {};
@@ -28,8 +34,7 @@ function parcels(ships) {
   return Object.values(g).map(os => {
     const nos = os.map(s => s.no).filter(Boolean), one = [...new Set(nos)];
     const io = os.find(s => s.no && s.stage >= 2 && /集运|国际|韩国|菜鸟|CJ|大韩|韩进|乐天|EMS|海外/.test(s.ex || ''));
-    let tx = '';
-    for (const s of os) for (const e of (s.st || [])) { const m = !tx && (e.p || '').match(/(国际|转运|韩国|海外|派送|新)?(运单|快递单|物流单|单)号?\s*[:：为是]?\s*([A-Z]{0,4}\d{9,15}[A-Z]{0,3})/); if (m) tx = m[3]; }
+    const tx = os.map(s => s.in || findIntl(s.st)).find(Boolean) || '';
     const intl = tx || ((os.length > 1 && one.length === 1 && nos.length === os.length) ? one[0] : io ? io.no : '');
     const kr = (os.find(s => s.kr) || {}).kr || intl;
     const cus = (os.find(s => s.cus) || {}).cus || null;

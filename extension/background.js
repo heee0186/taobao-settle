@@ -119,13 +119,19 @@ function classify(st) {
   const stage = !s.length ? -1 : m.got ? 5 : (m.dom || m.clr) ? 4 : (m.arr || m.cus) ? 3 : (m.out || m.sail) ? 2 : m.wh ? 1 : 0;
   return { stage, m };
 }
+function findIntl(st) {  // 합배송 운송장: '…最新物流单号为300322309912…' (창고 출고 때 기록됨)
+  const L = (st || []).map(e => e.p || '');
+  for (const p of L) { const m = p.match(/最新(物流)?(运)?单号\s*[为是:：]?\s*([A-Z0-9]{8,20})/); if (m) return m[3]; }
+  for (const p of L) { if (/入库|揽收/.test(p)) continue; const m = p.match(/(国际|转运|海外|韩国)(物流|运)?单号\s*[为是:：]?\s*([A-Z0-9]{8,20})/); if (m) return m[3]; }
+  return '';
+}
 function shipBody(id, info, cur, base) {
   const c = classify(info.st);
   return Object.assign({}, cur, {  // 사이트에서 넣은 운송장·통관·번역 정보는 그대로 둠
     id, date: cur.date || base.date || '', shop: cur.shop || base.shop || '', title: cur.title || base.title || '',
     ex: info.ex || cur.ex || '', no: info.no || cur.no || '',
     st: info.st.slice().sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14),
-    stage: Math.max(c.stage, cur.got ? 5 : -1), m: c.m, pk: c.m.out || '',
+    stage: Math.max(c.stage, cur.got ? 5 : -1), m: c.m, pk: c.m.out || '', in: findIntl(info.st) || cur.in || '',
     at: new Date().toISOString(), kr: cur.kr || '', got: !!cur.got, tko: cur.tko || '', lko: cur.lko || '', lsrc: cur.lsrc || ''
   });
 }
