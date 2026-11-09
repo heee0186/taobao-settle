@@ -254,6 +254,7 @@ async function translate(d, auto) {
   });
   Object.values(S.ship || {}).forEach(sh => {
     if (!S.orders[sh.id] && sh.title && !sh.tko) add(cleanTitle(sh.title), v => { sh.tko = v; return 's:' + sh.id; });
+    if ([...openHist].some(k => k.split(',').includes(sh.id))) (sh.st || []).forEach(e => { const src = cleanShipText(e.p); if (!/^\?+$/.test(e.p.trim()) && !(sh.stk || {})[src]) add(src, v => { sh.stk = Object.assign({}, sh.stk, { [src]: v }); return 's:' + sh.id; }); });
     const lt = shipLatest(sh);
     if (lt && sh.lsrc !== lt) add(lt, v => { sh.lko = v; sh.lsrc = lt; return 's:' + sh.id; });
   });
@@ -305,10 +306,10 @@ function classify(st) {
   m.wh = first(/集运仓|到达仓库|入库成功/);
   m.out = first(/包裹已出库|已交接成功/);
   m.sail = first(/离港|干线出发|航班起飞/);
-  m.arr = first(/到达目的地/);
+  { const x = s.find(e => /到达目的|抵达|到港|目的港|进港|入境|到达(韩国|仁川|平泽|釜山)/.test(e.p) && !/预计|离港/.test(e.p)); m.arr = x ? x.t : null; }  // '预计…到目的港'(도착 예정)은 제외
   m.cus = m.arr ? first(/清关/, m.arr) : null;
-  m.clr = m.arr ? first(/清关完成/, m.arr) : null;
-  m.dom = m.arr ? first(/目的地物流商|目的地分拨|派送|派件/, m.arr) : null;
+  m.clr = m.arr ? first(/清关完成|清关成功|放行/, m.arr) : null;
+  m.dom = m.arr ? first(/目的地物流商|目的地分拨|派送|派件|揽收|转交/, m.arr) : null;
   m.got = m.arr ? first(/签收|妥投|已送达/, m.arr) : null;
   const stage = !s.length ? -1 : m.got ? 5 : (m.dom || m.clr) ? 4 : (m.arr || m.cus) ? 3 : (m.out || m.sail) ? 2 : m.wh ? 1 : 0;
   return { stage, m };
@@ -321,13 +322,13 @@ function importShip(B) {
     const cur = S.ship[o.id] || {};
     const st = Array.isArray(o.st) ? o.st.filter(e => e && e.t && typeof e.p === 'string') : (cur.st || []);
     const c = classify(st);
-    S.ship[o.id] = {
+    S.ship[o.id] = Object.assign({}, cur, {
       id: String(o.id), date: o.date || cur.date || '', shop: o.shop || cur.shop || '', title: o.title || cur.title || '',
       ex: o.ex || cur.ex || '', no: o.no || cur.no || '',
       st: st.slice().sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14),
       stage: Math.max(c.stage, cur.got ? 5 : -1), m: c.m, pk: c.m.out || '',
       at: B.at || new Date().toISOString(), kr: cur.kr || '', got: !!cur.got, tko: cur.tko || '', lko: cur.lko || '', lsrc: cur.lsrc || ''
-    };
+    });
     if (S.orders[o.id]) linked++;
     up.push('s:' + o.id); n++;
   });
@@ -336,14 +337,64 @@ function importShip(B) {
   setTimeout(() => translate(null, true), 0);
   msg('주문 ' + n + '건의 배송 기록을 가져왔어요' + (n - linked ? ' (정산에 아직 없는 주문 ' + (n - linked) + '건 포함)' : '') + '.');
 }
+/* 관세청 통관 상세 (운송장 = House B/L 번호) */
+const cusDone = c => !!c && /반출/.test((c.status || '') + ' ' + (c.prgs || '') + ' ' + ((c.steps || [])[0] || {}).kind);
+let cusErr = '', cusBusy = false;
+const openHist = new Set();
+async function refreshCustoms(force) {
+  if (cusBusy || cusErr === 'no_key') return;
+  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || (!cusDone(p.cus) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
+  if (!todo.length) return;
+  cusBusy = true;
+  for (const p of todo) {
+    try {
+      const yy = ((p.os[0].pk || p.os[0].date || '') + '').slice(0, 4) || new Date().getFullYear();
+      const r = await fetch('/api/customs?hbl=' + encodeURIComponent(p.kr) + '&yy=' + yy);
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j) { cusErr = (j && j.error) || 'net'; break; }
+      cusErr = '';
+      const v = Object.assign(j, { at: Date.now(), hbl: p.kr });
+      shipKeys(p.key).forEach(id => { S.ship[id].cus = v; });
+      mark(...shipKeys(p.key).map(id => 's:' + id));
+    } catch (e) { cusErr = 'net'; break; }
+  }
+  cusBusy = false;
+  if (view === 'ship') render();
+}
+function cusBlock(p) {
+  if (!p.kr) return '';
+  const c = p.cus;
+  if (cusErr === 'no_key') return '<p class="mut cu">통관 상세를 보려면 관세청 유니패스 API 키가 필요해요. (README의 "통관 상세" 참고)</p>';
+  if (!c) return '<p class="mut cu">' + (cusBusy ? '관세청에 조회하는 중이에요…' : '관세청 조회 대기 중이에요.') + '</p>';
+  if (!c.found) return '<p class="mut cu">관세청: ' + esc(c.note || '아직 등록되지 않았어요.') + ' <span>(' + localAt(new Date(c.at).toISOString()) + ' 확인)</span></p>';
+  if (c.multi) return '<p class="mut cu">관세청에 같은 번호의 화물이 ' + c.list.length + '건 있어요. 유니패스에서 확인해 주세요.</p>';
+  let h = '<div class="cu"><div class="hd"><b>관세청 · ' + esc(c.status || c.prgs || '확인 중') + '</b><span class="mut">' + localAt(new Date(c.at).toISOString()) + ' 확인</span></div>' +
+    '<div class="ms">' + (c.arrived ? '<span>입항 <b>' + md(c.arrived) + '</b></span>' : '') + (c.forwarder ? '<span>특송업체 <b>' + esc(c.forwarder) + '</b></span>' : '') + (c.name ? '<span>품명 <b>' + esc(c.name) + '</b></span>' : '') + '</div>';
+  if ((c.steps || []).length) h += '<ul class="cs">' + c.steps.slice(0, 10).map(x => '<li><span class="mut">' + esc(hm(x.t)) + '</span><span>' + esc(x.kind) + (x.place ? ' <span class="mut">· ' + esc(x.place) + '</span>' : '') + '</span></li>').join('') + '</ul>';
+  return h + '</div>';
+}
+function histBlock(p) {
+  const s = p.os.slice().sort((a, b) => (b.st || []).length - (a.st || []).length)[0];
+  if (!s || !(s.st || []).length) return '';
+  const k = p.key, open = openHist.has(k);
+  let h = '<details class="hist" data-g="' + k + '"' + (open ? ' open' : '') + '><summary>타오바오 기록 전체 보기</summary>';
+  if (open) h += '<ul class="cs">' + s.st.map(e => {
+    const src = cleanShipText(e.p), q = /^\?+$/.test(e.p.trim());
+    const txt = q ? '(한국 구간 · 타오바오 기록에서 한글이 깨져 보이지 않아요)' : raw ? src : ((s.stk || {})[src] || '번역 중…');
+    return '<li><span class="mut">' + esc(hm(e.t)) + '</span><span>' + esc(txt) + '</span></li>';
+  }).join('') + '</ul>';
+  return h + '</details>';
+}
 // 같은 시각에 창고에서 출고된 주문끼리 한 소포로 묶음
 function parcels() {
   const g = {};
   Object.values(S.ship).forEach(s => { const k = s.pk ? 'p' + s.pk : 'o' + s.id; (g[k] = g[k] || []).push(s); });
   return Object.values(g).map(os => {
-    const stage = Math.min(...os.map(s => s.got ? 5 : s.stage));
+    let stage = Math.min(...os.map(s => s.got ? 5 : s.stage));
     const last = os.map(s => (s.st[0] || {}).t || '').sort().pop() || '';
-    return { os, stage, last, kr: (os.find(s => s.kr) || {}).kr || '', got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
+    const cus = (os.find(s => s.cus) || {}).cus || null;
+    if (cus && cus.found && stage < 5) stage = Math.max(stage, cusDone(cus) ? 4 : 3);  // 관세청 기록이 있으면 그 단계 반영
+    return { os, stage, last, cus, kr: (os.find(s => s.kr) || {}).kr || '', got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
   }).sort((a, b) => (a.got - b.got) || (b.stage - a.stage) || (a.last < b.last ? 1 : -1));
 }
 const md = t => t ? (+t.slice(5, 7)) + '/' + (+t.slice(8, 10)) : '';
@@ -358,7 +409,7 @@ function cleanShipText(p) { return p.replace(/，?【?物流问题[^】]*】?|�
 const STG_DESC = ['중국 택배로 웨이하이 창고에 가는 중이에요', '웨이하이 창고에서 합포장을 기다리는 중이에요', '한국으로 가는 중이에요', '한국 세관에서 통관 중이에요', '한국 택배로 배송 중이에요', '받았어요'];
 function lastText(s) {
   const e = s.st[0]; if (!e) return '아직 발송 전이에요';
-  if (/^\?+$/.test(e.p.trim())) return '한국 택배로 배송 중이에요. 국내 운송장 번호로 조회해 보세요.';
+  if (/^\?+$/.test(e.p.trim())) return '한국 택배로 배송 중이에요. 운송장 번호로 조회해 보세요.';
   if (raw) return cleanShipText(e.p);
   const lt = cleanShipText(e.p);
   return (s.lko && s.lsrc === lt) ? s.lko : STG_DESC[Math.max(s.stage, 0)];
@@ -375,10 +426,11 @@ function parcelCard(p) {
   if (ms.length) h += '<div class="ms">' + ms.map(([k, l]) => '<span>' + l + ' <b>' + md(m[k]) + '</b></span>').join('') + '</div>';
   h += '<ul class="po">' + p.os.map(s => '<li><span class="nm">' + esc(shipName(s)) + '</span><span class="mut">' + esc(md(s.date)) + ' 주문' +
     (s.stage < 2 && s.ex ? ' · ' + esc(exKo(s.ex)) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
-  if (p.stage >= 3 || p.kr) {
-    h += '<div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="국내 운송장 번호 (문자로 받은 번호)">' +
-      (p.kr ? '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버로 조회</a>' : '') + '</div>';
+  if (p.stage >= 2 || p.kr) {
+    h += '<label class="krl">운송장 번호 (유니패스의 House B/L)</label><div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="H B/L 번호를 붙여넣으세요">' +
+      (p.kr ? '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버 배송조회</a>' : '') + '</div>' + cusBlock(p);
   }
+  h += histBlock(p);
   h += '<div class="hd ft"><span></span><button class="txt" data-a="got" data-g="' + p.key + '">' + (p.got ? '받음 취소' : '받았어요') + '</button></div></div>';
   return h;
 }
@@ -390,6 +442,7 @@ function shipView() {
     '<a href="bookmarklet.html" target="_blank" rel="noopener">북마크 설치 방법</a></p></div>';
   if (!ps.length) return h + '<p class="empty">아직 가져온 배송 기록이 없어요.<br><a href="bookmarklet.html" target="_blank" rel="noopener">북마크 버튼부터 설치해 주세요</a></p>';
   h += act.length ? act.map(parcelCard).join('') : '<p class="empty">배송 중인 소포가 없어요.</p>';
+  setTimeout(() => refreshCustoms(false), 0);
   if (done.length) h += '<details class="dn"><summary>받은 소포 ' + done.length + '개</summary>' + done.slice(0, 20).map(parcelCard).join('') + '</details>';
   return h;
 }
@@ -538,7 +591,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t.classList.contains('krn')) { const v = t.value.replace(/[^0-9A-Za-z]/g, ''); const ks = shipKeys(t.dataset.g); ks.forEach(id => { S.ship[id].kr = v; }); mark(...ks.map(id => 's:' + id)); render(); return; }
+  if (t.classList.contains('krn')) { const v = t.value.replace(/[^0-9A-Za-z]/g, ''); const ks = shipKeys(t.dataset.g); ks.forEach(id => { S.ship[id].kr = v; delete S.ship[id].cus; }); mark(...ks.map(id => 's:' + id)); render(); if (v) refreshCustoms(true); return; }
   if (t.id === 'cd') { S.cards[t.dataset.d] = +t.value || 0; mark('meta'); render(); }
   else if (t.id === 'ek') { setKo(t.dataset.o, +t.dataset.x, t.value.trim()); ed = null; render(); }
   else if (t.classList.contains('who')) {
@@ -552,6 +605,12 @@ document.addEventListener('change', e => {
     render();
   }
 });
+document.addEventListener('toggle', e => {
+  const d = e.target; if (!d.classList || !d.classList.contains('hist')) return;
+  const k = d.dataset.g;
+  if (d.open && !openHist.has(k)) { openHist.add(k); render(); translate(null, true); }
+  else if (!d.open) openHist.delete(k);
+}, true);
 document.addEventListener('keydown', e => {
   const id = e.target.id;
   if (id === 'ek' && e.key === 'Escape') { ed = null; render(); }

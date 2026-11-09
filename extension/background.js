@@ -7,6 +7,13 @@ const DEF = { site: 'https://taobao-settle.vercel.app', every: 180 };
 const TABLE = 'tb_docs', SCHEMA = 'money';
 const MAX_PER_RUN = 60, GAP_MS = 450, NEW_ORDER_DAYS = 45;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 인터넷 요청: 연결 자체가 끊기면(Failed to fetch) 3초 뒤 한 번 더 시도하고, 그래도 안 되면 어느 단계인지 알려줌
+async function net(label, url, opt) {
+  for (let i = 0; i < 2; i++) {
+    try { return await fetch(url, opt); }
+    catch (e) { if (i) { const er = new Error(label + ' 연결 실패 (' + (e.message || e) + ')'); er.net = true; throw er; } await sleep(3000); }
+  }
+}
 const get = keys => chrome.storage.local.get(keys);
 const set = obj => chrome.storage.local.set(obj);
 
@@ -24,7 +31,7 @@ chrome.alarms.onAlarm.addListener(a => { if (a.name === 'check') run('auto'); })
 /* ---------- 정산 사이트 설정 읽기 (config.js) ---------- */
 async function siteConfig() {
   const { site } = await settings();
-  const t = await (await fetch(site.replace(/\/+$/, '') + '/config.js', { cache: 'no-store' })).text();
+  const t = await (await net('정산 사이트(' + site + ') 설정 읽기', site.replace(/\/+$/, '') + '/config.js', { cache: 'no-store' })).text();
   const url = (t.match(/SUPABASE_URL\s*:\s*['"]([^'"]+)['"]/) || [])[1];
   const key = (t.match(/SUPABASE_ANON_KEY\s*:\s*['"]([^'"]+)['"]/) || [])[1];
   if (!url || !key) throw new Error('정산 사이트 설정(config.js)을 읽지 못했어요.');
@@ -34,7 +41,7 @@ async function siteConfig() {
 /* ---------- 로그인 (비밀번호는 저장하지 않고 토큰만 보관) ---------- */
 async function login(email, password) {
   const c = await siteConfig();
-  const r = await fetch(c.url + '/auth/v1/token?grant_type=password', { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const r = await net('정산 사이트 로그인', c.url + '/auth/v1/token?grant_type=password', { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error_description || j.msg || j.message || '로그인하지 못했어요.');
   await set({ auth: { access: j.access_token, refresh: j.refresh_token, exp: Date.now() + (j.expires_in || 3600) * 1000, email } });
@@ -45,7 +52,7 @@ async function token(c) {
   const { auth } = await get('auth');
   if (!auth) throw new Error('NEED_LOGIN');
   if (auth.exp - 60000 > Date.now()) return auth.access;
-  const r = await fetch(c.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: auth.refresh }) });
+  const r = await net('정산 사이트 로그인 연장', c.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: { apikey: c.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: auth.refresh }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { await chrome.storage.local.remove('auth'); throw new Error('NEED_LOGIN'); }
   await set({ auth: { access: j.access_token, refresh: j.refresh_token, exp: Date.now() + (j.expires_in || 3600) * 1000, email: auth.email } });
@@ -53,7 +60,7 @@ async function token(c) {
 }
 async function rest(c, path, opt = {}) {
   const t = await token(c);
-  const r = await fetch(c.url + '/rest/v1/' + path, {
+  const r = await net(opt.method === 'POST' ? '정산 사이트에 저장' : '정산 사이트에서 주문 읽기', c.url + '/rest/v1/' + path, {
     method: opt.method || 'GET',
     headers: Object.assign({ apikey: c.key, Authorization: 'Bearer ' + t, 'Accept-Profile': SCHEMA, 'Content-Profile': SCHEMA, 'Content-Type': 'application/json' }, opt.headers || {}),
     body: opt.body ? JSON.stringify(opt.body) : undefined
@@ -104,23 +111,23 @@ function classify(st) {
   m.wh = first(/集运仓|到达仓库|入库成功/);
   m.out = first(/包裹已出库|已交接成功/);
   m.sail = first(/离港|干线出发|航班起飞/);
-  m.arr = first(/到达目的地/);
+  { const x = s.find(e => /到达目的|抵达|到港|目的港|进港|入境|到达(韩国|仁川|平泽|釜山)/.test(e.p) && !/预计|离港/.test(e.p)); m.arr = x ? x.t : null; }  // '预计…到目的港'(도착 예정)은 제외
   m.cus = m.arr ? first(/清关/, m.arr) : null;
-  m.clr = m.arr ? first(/清关完成/, m.arr) : null;
-  m.dom = m.arr ? first(/目的地物流商|目的地分拨|派送|派件/, m.arr) : null;
+  m.clr = m.arr ? first(/清关完成|清关成功|放行/, m.arr) : null;
+  m.dom = m.arr ? first(/目的地物流商|目的地分拨|派送|派件|揽收|转交/, m.arr) : null;
   m.got = m.arr ? first(/签收|妥投|已送达/, m.arr) : null;
   const stage = !s.length ? -1 : m.got ? 5 : (m.dom || m.clr) ? 4 : (m.arr || m.cus) ? 3 : (m.out || m.sail) ? 2 : m.wh ? 1 : 0;
   return { stage, m };
 }
 function shipBody(id, info, cur, base) {
   const c = classify(info.st);
-  return {
+  return Object.assign({}, cur, {  // 사이트에서 넣은 운송장·통관·번역 정보는 그대로 둠
     id, date: cur.date || base.date || '', shop: cur.shop || base.shop || '', title: cur.title || base.title || '',
     ex: info.ex || cur.ex || '', no: info.no || cur.no || '',
     st: info.st.slice().sort((a, b) => (a.t < b.t ? 1 : -1)).slice(0, 14),
     stage: Math.max(c.stage, cur.got ? 5 : -1), m: c.m, pk: c.m.out || '',
     at: new Date().toISOString(), kr: cur.kr || '', got: !!cur.got, tko: cur.tko || '', lko: cur.lko || '', lsrc: cur.lsrc || ''
-  };
+  });
 }
 
 /* ---------- 한 번 확인하기 ---------- */
@@ -151,7 +158,7 @@ async function run(why) {
     }
     if (fail.length) {
       const rest2 = targets.filter(id => !got[id]);
-      const r2 = await tbTab(rest2);
+      let r2 = null; try { r2 = await tbTab(rest2); } catch (e) { r2 = null; }
       if (r2) { via = Object.keys(got).length ? 'mixed' : 'tab'; fail = []; rest2.forEach(id => { if (r2[id]) got[id] = r2[id]; else fail.push(id); }); }
       else fail = rest2;
     }

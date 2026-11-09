@@ -203,3 +203,15 @@ details.dn summary{cursor:pointer;color:var(--sub);font-size:13px;padding:8px 2p
 .hda{display:flex;align-items:center;gap:14px;flex:none}
 @media (min-width:761px){aside{padding:3px;margin:-3px}}
 @media (max-width:760px){.dl{padding:4px 12px 8px}}
+
+/* 운송장 · 관세청 통관 · 타오바오 기록 */
+.krl{display:block;font-size:12px;color:var(--mut);margin:12px 0 0}
+.kr{margin-top:4px}
+.cu{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--ln2);font-size:13px}
+p.cu{margin:10px 0 0}
+.cu .ms{margin-top:4px}
+ul.cs{list-style:none;margin:8px 0 0;padding:0;font-size:13px}
+ul.cs li{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;padding:4px 0;border-top:1px solid var(--ln)}
+.hist ul.cs li{border-top-color:var(--ln2)}
+details.hist{margin-top:10px}
+details.hist summary{cursor:pointer;font-size:12px;color:var(--sub)}

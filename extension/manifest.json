@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "타오바오 배송 자동 확인",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "웨일이 켜져 있는 동안 정해진 간격으로 아직 안 받은 타오바오 주문의 배송 기록을 확인해서 정산 사이트에 저장해요.",
   "permissions": ["alarms", "storage", "scripting"],
   "host_permissions": [
