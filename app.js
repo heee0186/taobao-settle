@@ -349,7 +349,7 @@ let cusErr = '', cusBusy = false;
 const openHist = new Set();
 async function refreshCustoms(force) {
   if (cusBusy || cusErr === 'no_key') return;
-  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || p.cus.multi || p.cus.hbl !== p.kr || (!cusDone(p.cus) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
+  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || p.cus.multi || p.cus.hbl !== p.kr || (!(cusDone(p.cus) && p.cus.dom && p.cus.dom.done) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
   if (!todo.length) return;
   cusBusy = true;
   for (const p of todo) {
@@ -360,7 +360,7 @@ async function refreshCustoms(force) {
       if (!r.ok || !j) { cusErr = (j && j.error) || 'net'; break; }
       cusErr = '';
       const v = Object.assign(j, { at: Date.now(), hbl: p.kr });
-      shipKeys(p.key).forEach(id => { S.ship[id].cus = v; });
+      shipKeys(p.key).forEach(id => { S.ship[id].cus = v; if (v.dom && v.dom.done) S.ship[id].got = true; });  // 배달 완료면 '받음' 자동
       mark(...shipKeys(p.key).map(id => 's:' + id));
     } catch (e) { cusErr = 'net'; break; }
   }
@@ -377,7 +377,12 @@ function cusBlock(p) {
   let h = '<div class="cu"><div class="hd"><b>관세청 · ' + esc(c.status || c.prgs || '확인 중') + '</b><span class="mut">' + localAt(new Date(c.at).toISOString()) + ' 확인</span></div>' +
     '<div class="ms">' + (c.arrived ? '<span>입항 <b>' + md(c.arrived) + '</b></span>' : '') + (c.forwarder ? '<span>특송업체 <b>' + esc(c.forwarder) + '</b></span>' : '') + (c.name ? '<span>품명 <b>' + esc(c.name) + '</b></span>' : '') + '</div>';
   if ((c.steps || []).length) h += '<ul class="cs">' + c.steps.slice(0, 10).map(x => '<li><span class="mut">' + esc(hm(x.t)) + '</span><span>' + esc(x.kind) + (x.place ? ' <span class="mut">· ' + esc(x.place) + '</span>' : '') + '</span></li>').join('') + '</ul>';
-  return h + '</div>';
+  h += '</div>';
+  const d = c.dom;
+  if (d && d.found) h += '<div class="cu"><div class="hd"><b>' + esc(d.carrier) + ' · ' + esc(d.status) + '</b><a class="mut" target="_blank" rel="noopener" href="' + esc(d.link) + '">택배사에서 보기</a></div>' +
+    '<ul class="cs">' + d.steps.slice(0, 10).map(x => '<li><span class="mut">' + esc(hm(x.t)) + '</span><span>' + esc(x.kind) + (x.place ? ' <span class="mut">· ' + esc(x.place) + '</span>' : '') + (x.note ? '<br><span class="mut">' + esc(x.note) + '</span>' : '') + '</span></li>').join('') + '</ul></div>';
+  else if (cusDone(c)) h += '<p class="mut cu">국내 택배사 기록을 아직 찾지 못했어요. 네이버 배송조회로 확인해 보세요.</p>';
+  return h;
 }
 function histBlock(p) {
   const s = p.os.slice().sort((a, b) => (b.st || []).length - (a.st || []).length)[0];
@@ -406,7 +411,7 @@ function parcels() {
     const tx = os.map(s => s.in || findIntl(s.st)).find(Boolean);
     const intl = tx ? { no: tx, ex: '' } : (os.length > 1 && one.length === 1 && nos.length === os.length) ? { no: one[0], ex: os[0].ex } : io ? { no: io.no, ex: io.ex } : null;
     const userKr = (os.find(s => s.kr) || {}).kr || '';
-    if (cus && cus.found && stage < 5) stage = Math.max(stage, cusDone(cus) ? 4 : 3);  // 관세청 기록이 있으면 그 단계 반영
+    if (cus && cus.found && stage < 5) stage = Math.max(stage, cusDone(cus) || (cus.dom && cus.dom.found) ? 4 : 3);  // 관세청 기록이 있으면 그 단계 반영
     return { os, stage, last, cus, intl, krAuto: !userKr && !!intl, kr: userKr || (intl ? intl.no : ''), got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
   }).sort((a, b) => (a.got - b.got) || (b.stage - a.stage) || (a.last < b.last ? 1 : -1));
 }
@@ -442,7 +447,7 @@ function parcelCard(p) {
   if (p.stage >= 2 || p.kr) {
     if (p.intl) h += '<div class="iw">합배송 운송장 <b>' + esc(p.intl.no) + '</b>' + (p.intl.ex ? ' <span class="mut">' + esc(exKo(p.intl.ex)) + '</span>' : '') + '</div>';
     h += '<label class="krl">' + (p.krAuto ? '통관·국내 조회에 쓰는 번호 (합배송 운송장 자동 사용 · 다르면 고쳐 넣으세요)' : '운송장 번호 (유니패스의 House B/L)') + '</label><div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="H B/L 번호를 붙여넣으세요">' +
-      (p.kr ? '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버 배송조회</a>' : '') + '</div>' + cusBlock(p);
+      (p.kr ? (p.cus && p.cus.dom && p.cus.dom.found ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(p.cus.dom.link) + '">' + esc(p.cus.dom.carrier) + ' 조회</a>' : '<a class="btn" target="_blank" rel="noopener" href="https://search.naver.com/search.naver?query=' + encodeURIComponent(p.kr) + '">네이버 배송조회</a>') : '') + '</div>' + cusBlock(p);
   }
   h += histBlock(p);
   h += '<div class="hd ft"><span></span><button class="txt" data-a="got" data-g="' + p.key + '">' + (p.got ? '받음 취소' : '받았어요') + '</button></div></div>';

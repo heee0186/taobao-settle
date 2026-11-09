@@ -5,6 +5,7 @@
 //   SUPABASE_SECRET_KEY  수파베이스 비밀 키 (Project Settings → API Keys 의 Secret key) — 서버에서만 씀
 //   CRON_TOKEN           아무 긴 문자열. 깃허브 Secrets 의 CRON_TOKEN 과 같아야 함
 const { lookup, isDone } = require('../lib/unipass.js');
+const { trackDomestic } = require('../lib/domestic.js');
 const TABLE = 'tb_docs', SCHEMA = 'money';
 
 async function supa(req) {
@@ -52,14 +53,16 @@ module.exports = async (req, res) => {
     const db = await supa(req);
     const rows = await db.get(TABLE + '?select=id,body&id=like.s_*');
     const ships = rows.map(r => r.body).filter(b => b && b.id);
-    const todo = parcels(ships).filter(p => p.kr && !p.got && p.stage >= 2 && !isDone(p.cus)).slice(0, 20);
+    const todo = parcels(ships).filter(p => p.kr && !p.got && p.stage >= 2 && !(isDone(p.cus) && p.cus.dom && p.cus.dom.done)).slice(0, 20);
     const save = [];
     for (const p of todo) {
       out.checked++;
       try {
         const yy = ((p.os[0].pk || p.os[0].date || '') + '').slice(0, 4) || new Date().getFullYear();
         const v = Object.assign(await lookup(process.env.UNIPASS_API_KEY, p.kr, yy), { at: Date.now(), hbl: p.kr, by: 'cron' });
-        p.os.forEach(s => save.push({ id: 's_' + s.id, body: Object.assign({}, s, { cus: v }), updated_at: new Date().toISOString() }));
+        if (isDone(v)) v.dom = await trackDomestic(p.kr);  // 반출 뒤에는 국내 택배까지
+        const got = !!(v.dom && v.dom.done);           // 배달 완료면 '받음' 자동 처리
+        p.os.forEach(s => save.push({ id: 's_' + s.id, body: Object.assign({}, s, { cus: v }, got ? { got: true } : {}), updated_at: new Date().toISOString() }));
       } catch (e) { out.errors.push(p.kr + ': ' + (e.message || e)); }
     }
     if (save.length) { await db.upsert(save); out.saved = save.length; }
