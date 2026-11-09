@@ -28,7 +28,9 @@ function parcels(ships) {
   return Object.values(g).map(os => {
     const nos = os.map(s => s.no).filter(Boolean), one = [...new Set(nos)];
     const io = os.find(s => s.no && s.stage >= 2 && /集运|国际|韩国|菜鸟|CJ|大韩|韩进|乐天|EMS|海外/.test(s.ex || ''));
-    const intl = (os.length > 1 && one.length === 1 && nos.length === os.length) ? one[0] : io ? io.no : '';
+    let tx = '';
+    for (const s of os) for (const e of (s.st || [])) { const m = !tx && (e.p || '').match(/(国际|转运|韩国|海外|派送|新)?(运单|快递单|物流单|单)号?\s*[:：为是]?\s*([A-Z]{0,4}\d{9,15}[A-Z]{0,3})/); if (m) tx = m[3]; }
+    const intl = tx || ((os.length > 1 && one.length === 1 && nos.length === os.length) ? one[0] : io ? io.no : '');
     const kr = (os.find(s => s.kr) || {}).kr || intl;
     const cus = (os.find(s => s.cus) || {}).cus || null;
     return { os, kr, cus, got: os.every(s => s.got), stage: Math.min(...os.map(s => s.stage)) };

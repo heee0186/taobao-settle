@@ -337,6 +337,14 @@ function importShip(B) {
   setTimeout(() => translate(null, true), 0);
   msg('주문 ' + n + '건의 배송 기록을 가져왔어요' + (n - linked ? ' (정산에 아직 없는 주문 ' + (n - linked) + '건 포함)' : '') + '.');
 }
+// 타오바오 기록 문장 안에 들어 있는 국제/한국 운송장 번호 찾기 (예: '国际运单号：612345678901')
+function intlFromText(st) {
+  for (const e of (st || [])) {
+    const m = (e.p || '').match(/(国际|转运|韩国|海外|派送|新)?(运单|快递单|物流单|单)号?\s*[:：为是]?\s*([A-Z]{0,4}\d{9,15}[A-Z]{0,3})/);
+    if (m) return m[3];
+  }
+  return '';
+}
 /* 관세청 통관 상세 (운송장 = House B/L 번호) */
 const cusDone = c => !!c && /반출/.test((c.status || '') + ' ' + (c.prgs || '') + ' ' + ((c.steps || [])[0] || {}).kind);
 let cusErr = '', cusBusy = false;
@@ -396,7 +404,8 @@ function parcels() {
     // 합배송 운송장: 창고에서 묶인 뒤 주문들이 같은 번호를 갖거나, 국제·한국 택배 이름이 붙은 번호
     const nos = os.map(s => s.no).filter(Boolean), one = [...new Set(nos)];
     const io = os.find(s => s.no && s.stage >= 2 && /集运|国际|韩国|菜鸟|CJ|大韩|韩进|乐天|EMS|海外/.test(s.ex || ''));
-    const intl = (os.length > 1 && one.length === 1 && nos.length === os.length) ? { no: one[0], ex: os[0].ex } : io ? { no: io.no, ex: io.ex } : null;
+    const tx = os.map(s => intlFromText(s.st)).find(Boolean);
+    const intl = tx ? { no: tx, ex: '' } : (os.length > 1 && one.length === 1 && nos.length === os.length) ? { no: one[0], ex: os[0].ex } : io ? { no: io.no, ex: io.ex } : null;
     const userKr = (os.find(s => s.kr) || {}).kr || '';
     if (cus && cus.found && stage < 5) stage = Math.max(stage, cusDone(cus) ? 4 : 3);  // 관세청 기록이 있으면 그 단계 반영
     return { os, stage, last, cus, intl, krAuto: !userKr && !!intl, kr: userKr || (intl ? intl.no : ''), got: os.every(s => s.got), key: os.map(s => s.id).join(',') };
@@ -430,7 +439,7 @@ function parcelCard(p) {
   if (!p.got) h += '<p class="lt">' + esc(lastText(p.os.slice().sort((a, b) => ((a.st[0] || {}).t < (b.st[0] || {}).t ? 1 : -1))[0])) + '</p>';
   if (ms.length) h += '<div class="ms">' + ms.map(([k, l]) => '<span>' + l + ' <b>' + md(m[k]) + '</b></span>').join('') + '</div>';
   h += '<ul class="po">' + p.os.map(s => '<li><span class="nm">' + esc(shipName(s)) + '</span><span class="mut">' + esc(md(s.date)) + ' 주문' +
-    (s.no && !(p.intl && p.intl.no === s.no) ? ' · ' + esc(exKo(s.ex)) + ' ' + esc(s.no) : '') + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
+    '' + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
   if (p.stage >= 2 || p.kr) {
     if (p.intl) h += '<div class="iw">합배송 운송장 <b>' + esc(p.intl.no) + '</b>' + (p.intl.ex ? ' <span class="mut">' + esc(exKo(p.intl.ex)) + '</span>' : '') + '</div>';
     h += '<label class="krl">' + (p.krAuto ? '통관·국내 조회에 쓰는 번호 (합배송 운송장 자동 사용 · 다르면 고쳐 넣으세요)' : '운송장 번호 (유니패스의 House B/L)') + '</label><div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="H B/L 번호를 붙여넣으세요">' +
