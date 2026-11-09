@@ -349,7 +349,7 @@ let cusErr = '', cusBusy = false;
 const openHist = new Set();
 async function refreshCustoms(force) {
   if (cusBusy || cusErr === 'no_key') return;
-  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || (!cusDone(p.cus) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
+  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || p.cus.multi || p.cus.hbl !== p.kr || (!cusDone(p.cus) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
   if (!todo.length) return;
   cusBusy = true;
   for (const p of todo) {
@@ -391,12 +391,13 @@ function histBlock(p) {
   }).join('') + '</ul>';
   return h + '</details>';
 }
+const shipStage = s => s.got ? 5 : Math.max(s.stage, classify(s.st).stage);
 // 같은 시각에 창고에서 출고된 주문끼리 한 소포로 묶음
 function parcels() {
   const g = {};
   Object.values(S.ship).forEach(s => { const k = s.pk ? 'p' + s.pk : 'o' + s.id; (g[k] = g[k] || []).push(s); });
   return Object.values(g).map(os => {
-    let stage = Math.min(...os.map(s => s.got ? 5 : s.stage));
+    let stage = Math.min(...os.map(shipStage));
     const last = os.map(s => (s.st[0] || {}).t || '').sort().pop() || '';
     const cus = (os.find(s => s.cus) || {}).cus || null;
     // 합배송 운송장: 창고에서 묶인 뒤 주문들이 같은 번호를 갖거나, 국제·한국 택배 이름이 붙은 번호
@@ -437,7 +438,7 @@ function parcelCard(p) {
   if (!p.got) h += '<p class="lt">' + esc(lastText(p.os.slice().sort((a, b) => ((a.st[0] || {}).t < (b.st[0] || {}).t ? 1 : -1))[0])) + '</p>';
   if (ms.length) h += '<div class="ms">' + ms.map(([k, l]) => '<span>' + l + ' <b>' + md(m[k]) + '</b></span>').join('') + '</div>';
   h += '<ul class="po">' + p.os.map(s => '<li><span class="nm">' + esc(shipName(s)) + '</span><span class="mut">' + esc(md(s.date)) + ' 주문' +
-    '' + (p.os.length > 1 && !p.got && s.stage !== p.stage && s.stage >= 0 ? ' · ' + STG[s.stage] : '') + '</span></li>').join('') + '</ul>';
+    '' + '' + '</span></li>').join('') + '</ul>';
   if (p.stage >= 2 || p.kr) {
     if (p.intl) h += '<div class="iw">합배송 운송장 <b>' + esc(p.intl.no) + '</b>' + (p.intl.ex ? ' <span class="mut">' + esc(exKo(p.intl.ex)) + '</span>' : '') + '</div>';
     h += '<label class="krl">' + (p.krAuto ? '통관·국내 조회에 쓰는 번호 (합배송 운송장 자동 사용 · 다르면 고쳐 넣으세요)' : '운송장 번호 (유니패스의 House B/L)') + '</label><div class="kr"><input type="text" class="krn" inputmode="numeric" data-g="' + p.key + '" value="' + esc(p.kr) + '" placeholder="H B/L 번호를 붙여넣으세요">' +
@@ -508,6 +509,7 @@ function titleRow(o, i, x) {
 }
 function detail(d) {
   const c = calc(d);
+  const PST = {}; parcels().forEach(p => p.os.forEach(x => { PST[x.id] = p.got ? 5 : p.stage; }));  // 소포 단위 단계(통관 반영)
   const bad = c.os.filter(o => Math.abs(o.items.reduce((s, i) => s + i.price * i.qty, 0) + o.ship - o.paid) > 0.02).length;
   const need = c.os.some(o => o.items.some(i => !i.ko || (i.opt && !i.optKo)));
   let h = '<div class="card"><div class="hd"><h2>' + d + '</h2><span class="hda">' + rawBtn() +
@@ -523,7 +525,7 @@ function detail(d) {
   c.os.forEach(o => {
     const cnt = {}; o.items.forEach(i => cnt[i.title] = (cnt[i.title] || 0) + 1);
     const sp = S.ship[o.id];
-    h += '<div class="card ord"><div class="hd"><span class="shop">' + esc(shopKo(o)) + (sp ? ' <button class="stg s' + Math.max(sp.got ? 5 : sp.stage, 0) + '" data-a="view" data-v="ship">' + (sp.got ? '받음' : sp.stage < 0 ? '발송 전' : STG[sp.stage]) + '</button>' : '') + '</span>' + (S.people.length > 1 ? allSel('주문 전체', 'data-o="' + o.id + '"') : '') + '</div>' +
+    h += '<div class="card ord"><div class="hd"><span class="shop">' + esc(shopKo(o)) + (sp ? ' <button class="stg s' + Math.max(PST[o.id], 0) + '" data-a="view" data-v="ship">' + (PST[o.id] < 0 ? '발송 전' : STG[PST[o.id]]) + '</button>' : '') + '</span>' + (S.people.length > 1 ? allSel('주문 전체', 'data-o="' + o.id + '"') : '') + '</div>' +
       '<div class="mut">' + (stKo(o.status) ? esc(stKo(o.status)) + ' · ' : '') + yu(o.paid) + (o.ship ? ' (중국 내 배송 ' + yu(o.ship) + ' 포함)' : '') + '</div>';
     let open = false;
     o.items.forEach((i, x) => {
