@@ -53,3 +53,17 @@
 - 배송 현황의 소포가 **국제 운송** 단계가 되면 `운송장 번호 (유니패스의 House B/L)` 칸이 생긴다. 유니패스에서 확인한 H B/L 번호를 한 번 넣으면, 그 뒤로는 배송 현황을 열 때마다(30분 간격) 관세청에 자동으로 조회해서 입항·반입·심사·반출 단계를 보여준다. 반출이 끝나면 더 조회하지 않는다.
 - 필요한 것: 버셀 환경변수 `UNIPASS_API_KEY` (Production·Preview 체크 후 Redeploy).
 - 키 받는 법: 유니패스(unipass.customs.go.kr)에 로그인 → OPEN API 메뉴(사이트맵에서 찾을 수 있음) → 사용 신청에서 **화물통관진행정보 조회**를 신청 → 승인되면 OPEN API 메뉴의 인증키 조회에서 키를 복사한다. 메뉴 이름은 조금 다를 수 있다.
+
+## PC가 꺼져 있어도 통관 상태 갱신 (예약 작업)
+깃허브 예약 작업(`.github/workflows/customs.yml`)이 1시간마다 `/api/cron-customs`를 불러서, 운송장(합배송 운송장 또는 직접 넣은 H B/L)이 있는 소포의 관세청 통관 단계를 갱신한다. 반출이 끝난 소포는 더 조회하지 않는다.
+
+설정 (처음 한 번):
+1. 버셀 → Settings → Environment Variables 에 추가하고 Production·Preview 를 체크한 뒤 Redeploy
+   - `UNIPASS_API_KEY`: 관세청 유니패스 인증키
+   - `SUPABASE_SECRET_KEY`: 수파베이스 Project Settings → API Keys 의 **Secret key** (서버에서만 쓰는 키. 사이트 코드나 깃허브에는 넣지 않는다)
+   - `CRON_TOKEN`: 아무 긴 문자열 (예약 작업만 부를 수 있게 하는 암호)
+2. 깃허브 저장소 → Settings → Secrets and variables → Actions → **New repository secret**
+   - Name `CRON_TOKEN`, Value 는 1의 `CRON_TOKEN` 과 똑같이
+3. 깃허브 저장소 → Actions 탭 → **통관 상태 갱신** → Run workflow 로 한 번 실행해 보고, 결과에 `"errors":[]` 가 나오면 끝.
+
+참고: 깃허브는 저장소에 60일 동안 아무 변경이 없으면 예약 작업을 잠시 꺼 둔다. 그럴 때는 Actions 탭에서 다시 켜면 된다.

@@ -1,0 +1,23 @@
+# 1시간마다 정산 사이트의 /api/cron-customs 를 불러서
+# 배송 중인 소포의 관세청 통관 단계를 갱신해요. (PC가 꺼져 있어도 동작)
+# 필요한 것: 저장소 Settings → Secrets and variables → Actions 에 CRON_TOKEN
+name: 통관 상태 갱신
+
+on:
+  schedule:
+    - cron: '23 * * * *'   # 매시 23분 (UTC 기준, 한국 시간도 매시 23분)
+  workflow_dispatch: {}      # Actions 탭에서 'Run workflow' 로 바로 실행
+
+jobs:
+  customs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 통관 상태 조회
+        env:
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+          SITE: ${{ vars.SITE_URL || 'https://taobao-settle.vercel.app' }}
+        run: |
+          if [ -z "$CRON_TOKEN" ]; then echo "CRON_TOKEN 시크릿이 없어요"; exit 1; fi
+          curl -sS --fail-with-body --max-time 60 -H "Authorization: Bearer $CRON_TOKEN" "$SITE/api/cron-customs"
+          echo
