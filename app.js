@@ -451,7 +451,8 @@ function parcelCard(p) {
 function shipView() {
   const ps = parcels(), act = ps.filter(p => !p.got), done = ps.filter(p => p.got);
   const at = Object.values(S.ship).map(s => s.at).sort().pop();
-  let h = '<div class="card"><div class="hd"><h2>배송 현황</h2><span class="mut">' + (at ? '기록 ' + localAt(at) + ' 기준 · ' : '') + rawBtn() + '</span></div>' +
+  const cat = Math.max(0, ...Object.values(S.ship).map(s => (s.cus && s.cus.at) || 0));
+  let h = '<div class="card"><div class="hd"><h2>배송 현황</h2><span class="mut">' + (at ? '타오바오 ' + localAt(at) : '') + (cat ? ' · 관세청 ' + localAt(new Date(cat).toISOString()) : '') + (at || cat ? ' 확인 · ' : '') + rawBtn() + '</span></div>' +
     '<p class="sub" style="margin:8px 0 0">타오바오 주문 화면에서 <b>타오바오 물류</b> 북마크를 누르고, 복사한 내용을 왼쪽 입력칸에 붙여넣으면 최신 상태로 바뀌어요. ' +
     '<a href="bookmarklet.html" target="_blank" rel="noopener">북마크 설치 방법</a></p></div>';
   if (!ps.length) return h + '<p class="empty">아직 가져온 배송 기록이 없어요.<br><a href="bookmarklet.html" target="_blank" rel="noopener">북마크 버튼부터 설치해 주세요</a></p>';
