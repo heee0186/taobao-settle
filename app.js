@@ -344,7 +344,7 @@ function findIntl(st) {  // 합배송 운송장: '…最新物流单号为300322
   return '';
 }
 /* 관세청 통관 상세 (운송장 = House B/L 번호) */
-const cusDone = c => !!c && /반출/.test((c.status || '') + ' ' + (c.prgs || '') + ' ' + ((c.steps || [])[0] || {}).kind);
+const cusDone = c => !!c && (/반출/.test((c.status || '') + ' ' + (c.prgs || '')) || (c.steps || []).some(s => /반출/.test(s.kind || '')));
 let cusErr = '', cusBusy = false;
 const openHist = new Set();
 async function refreshCustoms(force) {
