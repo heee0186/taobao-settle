@@ -349,7 +349,7 @@ let cusErr = '', cusBusy = false;
 const openHist = new Set();
 async function refreshCustoms(force) {
   if (cusBusy || cusErr === 'no_key') return;
-  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || p.cus.multi || p.cus.hbl !== p.kr || (!(cusDone(p.cus) && p.cus.dom && p.cus.dom.done) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
+  const todo = parcels().filter(p => p.kr && !p.got && (force || !p.cus || p.cus.multi || p.cus.hbl !== p.kr || (cusDone(p.cus) && !p.cus.dom) || (!(cusDone(p.cus) && p.cus.dom && p.cus.dom.done) && Date.now() - (p.cus.at || 0) > 30 * 60000)));
   if (!todo.length) return;
   cusBusy = true;
   for (const p of todo) {
